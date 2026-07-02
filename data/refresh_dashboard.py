@@ -265,8 +265,14 @@ def merge_and_diff(old_data, fide_gms, rating_period):
                 "name": fide_rec["name"],
                 "fed": fide_rec["fed"],
                 "fedName": fed_names.get(fide_rec["fed"], fide_rec["fed"]),
-                "birthCountry": fide_rec["fed"],
-                "birthCountryName": fed_names.get(fide_rec["fed"], fide_rec["fed"]),
+                # Birth country is genuinely unknown for a brand-new GM (we only
+                # know their current federation, which is frequently NOT their
+                # birth country -- see the July 2026 birthCity/birthCountry fix).
+                # Leave blank rather than fabricating a guess; app.js already
+                # renders missing birthCountry/birthCity gracefully by omitting
+                # the "Born in ..." fragment entirely.
+                "birthCountry": "",
+                "birthCountryName": "",
                 "prevFed": fide_rec["fed"],
                 "prevFedName": fed_names.get(fide_rec["fed"], fide_rec["fed"]),
                 "sex": fide_rec["sex"],
