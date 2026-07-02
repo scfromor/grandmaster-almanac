@@ -40,13 +40,25 @@
     YUG:null, ZAM:'zm',
   };
   // Inline globe SVG used whenever a federation has no real national flag
-  // (FIDE, historical/dissolved entities, stateless players).
+  // (FIDE, stateless/unaffiliated players).
   const GLOBE_SVG = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="9"/><ellipse cx="12" cy="12" rx="4" ry="9"/><line x1="3" y1="12" x2="21" y2="12"/><path d="M5 7.5c1.8 1 4.4 1.5 7 1.5s5.2-.5 7-1.5"/><path d="M5 16.5c1.8-1 4.4-1.5 7-1.5s5.2.5 7 1.5"/></svg>';
-  // Returns an <img>/SVG markup string for the federation's flag, or the globe icon if none exists.
+  // Direct SVG flag URLs (Wikimedia Commons) for dissolved/historical federations —
+  // flagcdn.com only serves current-country ISO codes, so these need real historic flags instead of a globe.
+  const HISTORIC_FLAG_URL = {
+    URS: 'https://upload.wikimedia.org/wikipedia/commons/a/a9/Flag_of_the_Soviet_Union.svg', // Soviet Union
+    YUG: 'https://upload.wikimedia.org/wikipedia/commons/6/61/Flag_of_Yugoslavia_%281946-1992%29.svg', // Yugoslavia (1946-1992)
+    TCH: 'https://upload.wikimedia.org/wikipedia/commons/c/cb/Flag_of_the_Czech_Republic.svg', // Czechoslovakia (flag design retained by Czech Republic)
+    GDR: 'https://upload.wikimedia.org/wikipedia/commons/a/a1/Flag_of_East_Germany.svg', // East Germany
+    FRG: 'https://upload.wikimedia.org/wikipedia/commons/0/01/Flag_of_West_Germany%3B_Flag_of_Germany_%281990%E2%80%931996%29.svg', // West Germany
+    SCG: 'https://upload.wikimedia.org/wikipedia/commons/3/3e/Flag_of_Serbia_and_Montenegro_%281992%E2%80%932006%29.svg', // Serbia and Montenegro
+  };
+  // Returns an <img>/SVG markup string for the federation's flag, a historic flag, or the globe icon if none exists.
   function fedFlag(fed) {
+    const historic = HISTORIC_FLAG_URL[fed];
+    if (historic) return `<img class="fed-flag-img" src="${historic}" alt="" loading="lazy" width="20" height="15" crossorigin="anonymous">`;
     const iso = FED_ISO[fed];
     if (!iso) return `<span class="fed-globe">${GLOBE_SVG}</span>`;
-    return `<img class="fed-flag-img" src="https://flagcdn.com/${iso}.svg" alt="" loading="lazy" width="20" height="15">`;
+    return `<img class="fed-flag-img" src="https://flagcdn.com/${iso}.svg" alt="" loading="lazy" width="20" height="15" crossorigin="anonymous">`;
   }
 
   // ===== Theme toggle =====
@@ -629,6 +641,9 @@
     const revokedNote = p.revoked && p.revokedReason
       ? `<div class="revoked-note"><strong>Title revoked${p.revokedYear ? ` (${p.revokedYear})` : ''}.</strong> ${escapeHtml(p.revokedReason)}</div>`
       : '';
+    const nonNote = p.fed === 'NON'
+      ? `<div class="revoked-note"><strong>Unaffiliated (NON).</strong> This player is not currently represented by a national chess federation and competes under FIDE's "Non Federation" status.</div>`
+      : '';
     return `
       <div class="profile-head">
         ${avatarHtml}
@@ -641,6 +656,7 @@
         </div>
       </div>
       ${revokedNote}
+      ${nonNote}
 
       <div class="stat-row">
         <div class="stat"><div class="stat-label">Current ELO</div><div class="stat-value">${p.rating ?? '—'}</div></div>
