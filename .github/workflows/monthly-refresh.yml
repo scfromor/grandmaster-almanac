@@ -1,0 +1,49 @@
+name: Monthly FIDE ratings refresh
+
+# Runs automatically on the 3rd of every month at 09:00 UTC (FIDE typically
+# publishes the new standard rating list on the 1st, so this gives a
+# 2-day buffer). Can also be triggered manually from the Actions tab for
+# testing or an out-of-band refresh.
+on:
+  schedule:
+    - cron: "0 9 3 * *"
+  workflow_dispatch: {}
+
+permissions:
+  contents: write
+
+jobs:
+  refresh:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repo
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Run monthly refresh script
+        run: python3 data/refresh_dashboard.py
+
+      - name: Commit and push updated data.json
+        run: |
+          git config user.name "gm-almanac-bot"
+          git config user.email "actions@users.noreply.github.com"
+          if git diff --quiet -- gm-dashboard/data.json; then
+            echo "No changes to data.json — FIDE list unchanged or already up to date."
+            exit 0
+          fi
+          git add gm-dashboard/data.json data/refresh_log.json
+          PERIOD=$(python3 -c "import json; print(json.load(open('data/refresh_log.json'))['rating_period'])")
+          git commit -m "Monthly ratings refresh: ${PERIOD}"
+          git push
+
+      - name: Upload refresh log as artifact
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: refresh-log
+          path: data/refresh_log.json
+          retention-days: 90

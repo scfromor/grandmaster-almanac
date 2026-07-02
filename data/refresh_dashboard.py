@@ -34,7 +34,11 @@ import subprocess
 import sys
 from datetime import datetime, timezone
 
-WORKSPACE = "/home/user/workspace"
+# Resolve paths relative to the repo root (this file lives in <repo>/data/),
+# so the script works identically on a local machine, in this sandbox, or in
+# a GitHub Actions runner — no hardcoded absolute paths.
+SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
+WORKSPACE = os.environ.get("GM_ALMANAC_ROOT") or os.path.dirname(SCRIPT_DIR)
 DASHBOARD_DIR = os.path.join(WORKSPACE, "gm-dashboard")
 DATA_DIR = os.path.join(WORKSPACE, "data")
 
@@ -42,7 +46,7 @@ DASHBOARD_JSON = os.path.join(DASHBOARD_DIR, "data.json")
 PREV_SNAPSHOT = os.path.join(DATA_DIR, "prev_data.json")
 REFRESH_LOG = os.path.join(DATA_DIR, "refresh_log.json")
 
-FIDE_ZIP_URL = "http://ratings.fide.com/download/standard_rating_list.zip"
+FIDE_ZIP_URL = "https://ratings.fide.com/download/standard_rating_list.zip"
 FIDE_ZIP_PATH = os.path.join(DATA_DIR, "standard_rating_list.zip")
 FIDE_TXT_PATH = os.path.join(DATA_DIR, "standard_rating_list.txt")
 
