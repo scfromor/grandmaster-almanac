@@ -1,0 +1,47 @@
+{
+  "status": "ok",
+  "rating_period": "JUL26",
+  "total_players_published": 2145,
+  "active_gm_count": 1316,
+  "diff": {
+    "new_gms_count": 0,
+    "transfers_count": 0,
+    "deaths_count": 1,
+    "new_gms": [],
+    "transfers": [],
+    "deaths": [
+      {
+        "id": "4500059",
+        "name": "Nei, Iivo",
+        "fed": "EST",
+        "deathYear": null,
+        "note": "newly absent from FIDE list this period — unconfirmed, needs manual verification"
+      }
+    ],
+    "dropped_from_list_count": 255
+  },
+  "top5": [
+    {
+      "name": "Carlsen, Magnus",
+      "rating": 2823
+    },
+    {
+      "name": "Caruana, Fabiano",
+      "rating": 2792
+    },
+    {
+      "name": "Nakamura, Hikaru",
+      "rating": 2792
+    },
+    {
+      "name": "Sindarov, Javokhir",
+      "rating": 2777
+    },
+    {
+      "name": "Keymer, Vincent",
+      "rating": 2767
+    }
+  ],
+  "errors": [],
+  "run_at_utc": "2026-07-02T20:28:37.510310+00:00"
+}
