@@ -285,14 +285,26 @@ main { max-width: 1400px; margin: 0 auto; padding: 22px 20px 80px; }
   color: transparent;
 }
 .player-name strong { font-weight: 600; }
-.fed-cell { display: inline-flex; align-items: center; gap: 6px; font-size: var(--text-xs); color: var(--text-muted); }
+.fed-cell { display: inline-flex; align-items: center; gap: 7px; font-size: var(--text-xs); color: var(--text-muted); }
 .fed-code { font-family: var(--font-mono); font-weight: 600; color: var(--text); }
-.fed-flag {
-  font-size: 18px;
-  line-height: 1;
-  font-family: "Apple Color Emoji", "Segoe UI Emoji", "Noto Color Emoji", "Twemoji Mozilla", sans-serif;
-  letter-spacing: 0;
+.fed-flag { display: inline-flex; align-items: center; line-height: 0; flex-shrink: 0; }
+.fed-flag-img {
+  display: block;
+  width: 20px;
+  height: 15px;
+  object-fit: cover;
+  border-radius: 2px;
+  box-shadow: 0 0 0 1px rgba(0,0,0,0.08);
 }
+.fed-globe {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 20px;
+  height: 15px;
+  color: var(--text-muted);
+}
+.fed-globe svg { width: 15px; height: 15px; }
 .rating-cell { font-weight: 600; }
 .rating-cell.top { color: var(--gold); }
 .status-dot { display: inline-flex; align-items: center; gap: 6px; font-size: var(--text-xs); color: var(--text-muted); }
@@ -629,7 +641,10 @@ main { max-width: 1400px; margin: 0 auto; padding: 22px 20px 80px; }
 .share-card > * { position: relative; }
 .sc-head { display: flex; align-items: center; justify-content: space-between; }
 .sc-brand { font-family: var(--font-display); font-weight: 600; font-size: 14px; letter-spacing: 0.04em; opacity: 0.85; text-transform: uppercase; }
-.sc-flag { font-family: "Apple Color Emoji", "Segoe UI Emoji", "Noto Color Emoji", "Twemoji Mozilla", var(--font-mono), sans-serif; font-size: 18px; font-weight: 600; padding: 4px 10px; background: rgba(255,255,255,0.12); border-radius: 999px; line-height: 1; }
+.sc-flag { display: inline-flex; align-items: center; justify-content: center; padding: 6px 10px; background: rgba(255,255,255,0.12); border-radius: 999px; line-height: 0; }
+.sc-flag .fed-flag-img { width: 24px; height: 18px; box-shadow: 0 0 0 1px rgba(255,255,255,0.25); }
+.sc-flag .fed-globe { width: 18px; height: 18px; color: rgba(255,255,255,0.85); }
+.sc-flag .fed-globe svg { width: 18px; height: 18px; }
 .sc-body { display: flex; flex-direction: column; justify-content: center; }
 .sc-title { font-family: var(--font-display); font-size: 36px; font-weight: 600; line-height: 1.05; letter-spacing: -0.015em; }
 .sc-subtitle { font-size: 13px; opacity: 0.78; margin-top: 6px; letter-spacing: 0.01em; }

@@ -12,45 +12,41 @@
     radarChart: null,
   };
 
-  // ===== FIDE federation code -> ISO 3166-1 alpha-2 (for flag emojis) =====
-  // Most FIDE codes follow IOC; this maps to the ISO codes flag emojis are built from.
-  // null means "no straightforward flag" (historical entities, FIDE flag, refugee, etc.).
+  // ===== FIDE federation code -> ISO 3166-1 alpha-2 (for SVG flags via flagcdn.com) =====
+  // Most FIDE codes follow IOC; this maps to the ISO codes flagcdn.com serves SVGs for.
+  // null means "no country flag" (historical entities, FIDE flag, refugee, etc.) — these get a globe icon instead.
   const FED_ISO = {
-    ALB:'AL', ALG:'DZ', AND:'AD', ARG:'AR', ARM:'AM', AUS:'AU', AUT:'AT', AZE:'AZ',
-    BAN:'BD', BEL:'BE', BIH:'BA', BLR:'BY', BOL:'BO', BRA:'BR', BUL:'BG',
-    CAN:'CA', CHI:'CL', CHN:'CN', COL:'CO', CRC:'CR', CRO:'HR', CUB:'CU', CYP:'CY', CZE:'CZ',
-    DEN:'DK', DOM:'DO',
-    ECU:'EC', EGY:'EG', ENG:'GB-ENG', ESP:'ES', EST:'EE',
-    FAI:'FO', FID:null, FIN:'FI', FRA:'FR', FRG:null,
-    GDR:null, GEO:'GE', GER:'DE', GRE:'GR',
-    HUN:'HU',
-    INA:'ID', IND:'IN', IRI:'IR', IRL:'IE', ISL:'IS', ISR:'IL', ITA:'IT',
-    JOR:'JO',
-    KAZ:'KZ', KGZ:'KG', KOR:'KR',
-    LAT:'LV', LTU:'LT',
-    MAR:'MA', MAS:'MY', MDA:'MD', MEX:'MX', MGL:'MN', MKD:'MK', MNC:'MC', MNE:'ME', MYA:'MM',
-    NED:'NL', NON:null, NOR:'NO', NZL:'NZ',
-    PAK:'PK', PAR:'PY', PER:'PE', PHI:'PH', POL:'PL', POR:'PT',
-    QAT:'QA',
-    ROU:'RO', RSA:'ZA', RUS:'RU',
-    SCG:null, SCO:'GB-SCT', SEN:'SN', SGP:'SG', SLO:'SI', SRB:'RS', SUI:'CH', SVK:'SK', SWE:'SE',
-    TCH:null, TJK:'TJ', TKM:'TM', TPE:'TW', TUN:'TN', TUR:'TR',
-    UAE:'AE', UKR:'UA', URS:null, URU:'UY', USA:'US', UZB:'UZ',
-    VEN:'VE', VIE:'VN',
-    YUG:null, ZAM:'ZM',
+    ALB:'al', ALG:'dz', AND:'ad', ARG:'ar', ARM:'am', AUS:'au', AUT:'at', AZE:'az',
+    BAN:'bd', BEL:'be', BIH:'ba', BLR:'by', BOL:'bo', BRA:'br', BUL:'bg',
+    CAN:'ca', CHI:'cl', CHN:'cn', COL:'co', CRC:'cr', CRO:'hr', CUB:'cu', CYP:'cy', CZE:'cz',
+    DEN:'dk', DOM:'do',
+    ECU:'ec', EGY:'eg', ENG:'gb-eng', ESP:'es', EST:'ee',
+    FAI:'fo', FID:null, FIN:'fi', FRA:'fr', FRG:null,
+    GDR:null, GEO:'ge', GER:'de', GRE:'gr',
+    HUN:'hu',
+    INA:'id', IND:'in', IRI:'ir', IRL:'ie', ISL:'is', ISR:'il', ITA:'it',
+    JOR:'jo',
+    KAZ:'kz', KGZ:'kg', KOR:'kr',
+    LAT:'lv', LTU:'lt',
+    MAR:'ma', MAS:'my', MDA:'md', MEX:'mx', MGL:'mn', MKD:'mk', MNC:'mc', MNE:'me', MYA:'mm',
+    NED:'nl', NON:null, NOR:'no', NZL:'nz',
+    PAK:'pk', PAR:'py', PER:'pe', PHI:'ph', POL:'pl', POR:'pt',
+    QAT:'qa',
+    ROU:'ro', RSA:'za', RUS:'ru',
+    SCG:null, SCO:'gb-sct', SEN:'sn', SGP:'sg', SLO:'si', SRB:'rs', SUI:'ch', SVK:'sk', SWE:'se',
+    TCH:null, TJK:'tj', TKM:'tm', TPE:'tw', TUN:'tn', TUR:'tr',
+    UAE:'ae', UKR:'ua', URS:null, URU:'uy', USA:'us', UZB:'uz',
+    VEN:'ve', VIE:'vn',
+    YUG:null, ZAM:'zm',
   };
-  // Emoji-renderable subdivisions (England, Scotland, Wales)
-  const SUBDIV_FLAG = {
-    'GB-ENG': '\uD83C\uDFF4\uDB40\uDC67\uDB40\uDC62\uDB40\uDC65\uDB40\uDC6E\uDB40\uDC67\uDB40\uDC7F',
-    'GB-SCT': '\uD83C\uDFF4\uDB40\uDC67\uDB40\uDC62\uDB40\uDC73\uDB40\uDC63\uDB40\uDC74\uDB40\uDC7F',
-  };
+  // Inline globe SVG used whenever a federation has no real national flag
+  // (FIDE, historical/dissolved entities, stateless players).
+  const GLOBE_SVG = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="9"/><ellipse cx="12" cy="12" rx="4" ry="9"/><line x1="3" y1="12" x2="21" y2="12"/><path d="M5 7.5c1.8 1 4.4 1.5 7 1.5s5.2-.5 7-1.5"/><path d="M5 16.5c1.8-1 4.4-1.5 7-1.5s5.2.5 7 1.5"/></svg>';
+  // Returns an <img>/SVG markup string for the federation's flag, or the globe icon if none exists.
   function fedFlag(fed) {
     const iso = FED_ISO[fed];
-    if (!iso) return '';
-    if (SUBDIV_FLAG[iso]) return SUBDIV_FLAG[iso];
-    // Two-letter ISO -> regional-indicator emoji
-    const A = 0x1F1E6;
-    return String.fromCodePoint(A + iso.charCodeAt(0) - 65, A + iso.charCodeAt(1) - 65);
+    if (!iso) return `<span class="fed-globe">${GLOBE_SVG}</span>`;
+    return `<img class="fed-flag-img" src="https://flagcdn.com/${iso}.svg" alt="" loading="lazy" width="20" height="15">`;
   }
 
   // ===== Theme toggle =====
@@ -316,7 +312,7 @@
               <strong>${escapeHtml(p.name)}</strong>
             </div>
           </td>
-          <td><span class="fed-cell">${fedFlag(p.fed) ? `<span class="fed-flag" aria-hidden="true">${fedFlag(p.fed)}</span>` : ''}<span>${escapeHtml(p.fedName)}</span></span></td>
+          <td><span class="fed-cell"><span class="fed-flag" aria-hidden="true">${fedFlag(p.fed)}</span><span>${escapeHtml(p.fedName)}</span></span></td>
           <td class="num rating-cell ${isTop ? 'top' : ''}">${p.rating ?? '—'}</td>
           <td class="num">${p.peak}</td>
           <td class="num">${bornCell}</td>
@@ -695,7 +691,7 @@
         <div class="sc-knight">♞</div>
         <div class="sc-head">
           <div class="sc-brand">Grandmaster Almanac</div>
-          <div class="sc-flag">${fedFlag(p.fed) || p.fed}</div>
+          <div class="sc-flag">${fedFlag(p.fed)}</div>
         </div>
         <div class="sc-body">
           <div class="sc-title">${escapeHtml(p.name)}</div>
