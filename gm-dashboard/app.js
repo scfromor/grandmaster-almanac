@@ -81,8 +81,23 @@
   applyTheme();
 
   // ===== Load data =====
-  fetch('data.json')
-    .then((r) => r.json())
+  // Fetch the live dataset from GitHub via the jsDelivr CDN so the site always
+  // reflects the latest monthly FIDE refresh (auto-committed by the repo's
+  // GitHub Action) without needing to redeploy this static site each month.
+  // `@master` on jsDelivr is cached ~12h and purges automatically on new commits;
+  // falls back to the bundled local data.json if the CDN is unreachable.
+  const REMOTE_DATA_URL = 'https://cdn.jsdelivr.net/gh/scfromor/grandmaster-almanac@master/gm-dashboard/data.json';
+  const LOCAL_DATA_URL = 'data.json';
+
+  fetch(REMOTE_DATA_URL)
+    .then((r) => {
+      if (!r.ok) throw new Error(`CDN responded ${r.status}`);
+      return r.json();
+    })
+    .catch((err) => {
+      console.warn('Falling back to local data.json:', err.message);
+      return fetch(LOCAL_DATA_URL).then((r) => r.json());
+    })
     .then((d) => {
       state.raw = d;
       init();
