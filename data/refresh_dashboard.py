@@ -82,6 +82,218 @@ REVOKED_TITLE_IDS = {
 }
 
 
+# ---------------------------------------------------------------------------
+# Best-effort Wikipedia/Wikidata birth-country enrichment for brand-new GMs.
+#
+# FIDE's rating list has no birth-city/birth-country field, so for a GM who
+# just appeared on the list for the first time we look them up on Wikipedia,
+# resolve their Wikidata item, and read the P19 (place of birth) claim. This
+# is best-effort: many brand-new/obscure GMs won't have a Wikipedia page or a
+# P19 claim yet, in which case this returns (None, None) and the caller falls
+# back to leaving birthCity/birthCountry blank -- it never fabricates a guess
+# from the player's current federation (that was the original bug fixed
+# earlier in the July 2026 birthCity/birthCountry cleanup).
+# ---------------------------------------------------------------------------
+import json
+import subprocess
+import time
+
+
+def curl_json(url, timeout=20, retries=2, min_interval=1.5):
+    # Be gentle on Wikipedia/Wikidata's rate limiter -- a monthly refresh can
+    # make dozens of calls in a tight loop across several new GMs, which
+    # triggers "You are making too many requests to the API" if unthrottled.
+    time.sleep(min_interval)
+    for attempt in range(retries + 1):
+        result = subprocess.run(
+            ["curl", "-sL", "--max-time", str(timeout), "-A",
+             "GrandmasterAlmanac/1.0 (personal chess dashboard project)", url],
+            capture_output=True, text=True,
+        )
+        if result.returncode == 0 and result.stdout.strip():
+            try:
+                return json.loads(result.stdout)
+            except json.JSONDecodeError:
+                pass
+        # retry on timeout/empty/bad-json, backing off a bit longer each time
+        time.sleep(min_interval * (attempt + 2))
+    return None
+
+
+def _get_p131_ids(claims):
+    ids = []
+    for claim in claims.get("P131", []):
+        try:
+            ids.append(claim["mainsnak"]["datavalue"]["value"]["id"])
+        except (KeyError, IndexError):
+            continue
+    return ids
+
+
+def _walk_p131_for_uk_constituent(start_claims, uk_constituent_qids, max_hops=3):
+    """Breadth-first walk up the P131 (located in admin entity) chain,
+    looking for a UK constituent-country QID within max_hops levels.
+    Returns the constituent country name, or None if not found.
+    """
+    frontier = _get_p131_ids(start_claims)
+    seen = set(frontier)
+    for _ in range(max_hops):
+        if not frontier:
+            return None
+        for admin_qid in frontier:
+            if admin_qid in uk_constituent_qids:
+                return uk_constituent_qids[admin_qid]
+        next_frontier = []
+        for admin_qid in frontier:
+            admin_url = f"https://www.wikidata.org/wiki/Special:EntityData/{admin_qid}.json"
+            admin_data = curl_json(admin_url)
+            if not admin_data:
+                continue
+            try:
+                admin_claims = admin_data["entities"][admin_qid]["claims"]
+            except (KeyError, IndexError):
+                continue
+            for parent_qid in _get_p131_ids(admin_claims):
+                if parent_qid not in seen:
+                    seen.add(parent_qid)
+                    next_frontier.append(parent_qid)
+        frontier = next_frontier
+    return None
+
+
+def lookup_birth_country(fide_name, fed_hint=None):
+    """
+    fide_name is in FIDE's "Lastname, Firstname" format.
+    Returns (birth_city, birth_country_name) or (None, None) if not found.
+    """
+    # Reformat "Lastname, Firstname" -> "Firstname Lastname" for search.
+    if "," in fide_name:
+        last, first = [x.strip() for x in fide_name.split(",", 1)]
+        search_name = f"{first} {last}"
+    else:
+        search_name = fide_name
+
+    search_url = (
+        "https://en.wikipedia.org/w/api.php?action=query&list=search"
+        f"&srsearch={search_name.replace(' ', '%20')}%20chess%20grandmaster"
+        "&format=json&srlimit=5"
+    )
+    search_result = curl_json(search_url)
+    if not search_result:
+        return None, None
+    hits = search_result.get("query", {}).get("search", [])
+    if not hits:
+        return None, None
+
+    # Prefer a hit whose title matches the searched name closely (avoids
+    # picking a disambiguation page like "Motwani" over "Paul Motwani" when
+    # the disambiguation page happens to rank first).
+    chosen = hits[0]
+    for hit in hits:
+        title = hit["title"]
+        if title.lower() == search_name.lower():
+            chosen = hit
+            break
+        if search_name.lower() in title.lower() and "disambiguation" not in title.lower():
+            chosen = hit
+            break
+
+    page_title = chosen["title"].replace(" ", "_")
+    summary_url = f"https://en.wikipedia.org/api/rest_v1/page/summary/{page_title}"
+    summary = curl_json(summary_url)
+    if not summary or "wikibase_item" not in summary:
+        return None, None
+
+    qid = summary["wikibase_item"]
+    entity_url = f"https://www.wikidata.org/wiki/Special:EntityData/{qid}.json"
+    entity_data = curl_json(entity_url)
+    if not entity_data:
+        return None, None
+
+    try:
+        claims = entity_data["entities"][qid]["claims"]
+        if "P19" not in claims:
+            return None, None
+        birthplace_qid = claims["P19"][0]["mainsnak"]["datavalue"]["value"]["id"]
+    except (KeyError, IndexError):
+        return None, None
+
+    bp_url = f"https://www.wikidata.org/wiki/Special:EntityData/{birthplace_qid}.json"
+    bp_data = curl_json(bp_url)
+    if not bp_data:
+        return None, None
+
+    # Wikidata QIDs for UK constituent countries -- checked against the
+    # birthplace's P131 (admin territorial entity) chain BEFORE falling back
+    # to P17 (country), because P17 for a UK city usually resolves straight
+    # to "United Kingdom" and loses the England/Scotland/Wales/NI distinction
+    # (the exact bug fixed in the July 2026 birthCity/birthCountry cleanup).
+    #
+    # A city's direct P131 claim is often an intermediate admin unit (e.g.
+    # Dundee -> "Dundee City" council area) rather than the constituent
+    # country itself, so we walk the P131 chain breadth-first up to a few
+    # hops looking for a UK constituent country match.
+    UK_CONSTITUENT_QIDS = {"Q21": "England", "Q22": "Scotland", "Q25": "Wales", "Q26": "Northern Ireland"}
+
+    try:
+        bp_entity = bp_data["entities"][birthplace_qid]
+        city_name = bp_entity["labels"].get("en", {}).get("value")
+        bp_claims = bp_entity["claims"]
+    except (KeyError, IndexError):
+        return None, None
+
+    uk_match = _walk_p131_for_uk_constituent(bp_claims, UK_CONSTITUENT_QIDS, max_hops=3)
+    if uk_match:
+        return city_name, uk_match
+
+    country_qid = None
+    if "P17" in bp_claims:
+        try:
+            country_qid = bp_claims["P17"][0]["mainsnak"]["datavalue"]["value"]["id"]
+        except (KeyError, IndexError):
+            country_qid = None
+
+    if not country_qid:
+        return city_name, None
+
+    country_url = f"https://www.wikidata.org/wiki/Special:EntityData/{country_qid}.json"
+    country_data = curl_json(country_url)
+    if not country_data:
+        return city_name, None
+
+    try:
+        country_name = country_data["entities"][country_qid]["labels"].get("en", {}).get("value")
+    except (KeyError, IndexError):
+        country_name = None
+
+    return city_name, normalize_country_name(country_name)
+
+
+# Wikidata's official/formal country names sometimes differ from the
+# dashboard's established vocabulary (which mirrors FIDE federation names).
+COUNTRY_NAME_ALIASES = {
+    "People's Republic of China": "China",
+    "Republic of China": "Chinese Taipei",
+    "Republic of Korea": "South Korea",
+    "Democratic People's Republic of Korea": "North Korea",
+    "Russian Federation": "Russia",
+    "Islamic Republic of Iran": "Iran",
+    "Syrian Arab Republic": "Syria",
+    "Czechia": "Czech Republic",
+    "Republic of Moldova": "Moldova",
+    "Plurinational State of Bolivia": "Bolivia",
+    "Bolivarian Republic of Venezuela": "Venezuela",
+    "United Republic of Tanzania": "Tanzania",
+    "Lao People's Democratic Republic": "Laos",
+    "Socialist Republic of Vietnam": "Vietnam",
+    "Democratic Republic of the Congo": "DR Congo",
+    "Republic of North Macedonia": "North Macedonia",
+    "Ivory Coast": "Ivory Coast",
+    "C\u00f4te d'Ivoire": "Ivory Coast",
+    "Bosnia and Herzegovina": "Bosnia & Herzegovina",
+}
+
+
 def log(msg):
     print(f"[refresh_dashboard] {msg}", flush=True)
 
@@ -260,19 +472,37 @@ def merge_and_diff(old_data, fide_gms, rating_period):
 
         else:
             # Brand new GM not in prior dataset — minimal enrichment (no photo/bio/style yet)
+            #
+            # Birth country is genuinely unknown from FIDE's rating list alone
+            # (it only has current federation, which is frequently NOT the
+            # player's birth country -- see the July 2026 birthCity/birthCountry
+            # fix). Best-effort: try to resolve the real birth city/country via
+            # Wikipedia/Wikidata. This is wrapped in a broad try/except so any
+            # network hiccup, parsing surprise, or Wikipedia/Wikidata API change
+            # never crashes the monthly refresh -- on any failure we fall back
+            # to blank fields, exactly like before this enhancement. We never
+            # fabricate a birth country from the current federation.
+            birth_city, birth_country_name = "", ""
+            try:
+                looked_up_city, looked_up_country = lookup_birth_country(fide_rec["name"])
+                if looked_up_city:
+                    birth_city = looked_up_city
+                if looked_up_country:
+                    birth_country_name = looked_up_country
+            except Exception as exc:
+                log(f"Wikipedia birth-country lookup failed for {fide_rec['name']!r}: {exc}")
+
+            # birthCountry (the FIDE-style federation code) has no reliable
+            # equivalent from a Wikidata country name, so it stays blank even
+            # when birthCountryName is resolved. app.js only needs the human
+            # readable name to render the "Born in ..." fragment.
             player = {
                 "id": pid,
                 "name": fide_rec["name"],
                 "fed": fide_rec["fed"],
                 "fedName": fed_names.get(fide_rec["fed"], fide_rec["fed"]),
-                # Birth country is genuinely unknown for a brand-new GM (we only
-                # know their current federation, which is frequently NOT their
-                # birth country -- see the July 2026 birthCity/birthCountry fix).
-                # Leave blank rather than fabricating a guess; app.js already
-                # renders missing birthCountry/birthCity gracefully by omitting
-                # the "Born in ..." fragment entirely.
                 "birthCountry": "",
-                "birthCountryName": "",
+                "birthCountryName": birth_country_name,
                 "prevFed": fide_rec["fed"],
                 "prevFedName": fed_names.get(fide_rec["fed"], fide_rec["fed"]),
                 "sex": fide_rec["sex"],
@@ -286,7 +516,7 @@ def merge_and_diff(old_data, fide_gms, rating_period):
                 "active": fide_rec.get("active", True),
                 "history": [fide_rec["rating"]] if fide_rec["rating"] is not None else [],
                 "style": {},
-                "birthCity": "",
+                "birthCity": birth_city,
                 "photo": "",
                 "deceased": False,
                 "deathYear": None,
