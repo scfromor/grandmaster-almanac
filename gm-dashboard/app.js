@@ -316,7 +316,7 @@
               <strong>${escapeHtml(p.name)}</strong>
             </div>
           </td>
-          <td><span class="fed-cell">${fedFlag(p.fed) ? `<span class="fed-flag" aria-hidden="true">${fedFlag(p.fed)}</span>` : ''}<span class="fed-code">${p.fed}</span><span>${escapeHtml(p.fedName)}</span></span></td>
+          <td><span class="fed-cell">${fedFlag(p.fed) ? `<span class="fed-flag" aria-hidden="true">${fedFlag(p.fed)}</span>` : ''}<span>${escapeHtml(p.fedName)}</span></span></td>
           <td class="num rating-cell ${isTop ? 'top' : ''}">${p.rating ?? '—'}</td>
           <td class="num">${p.peak}</td>
           <td class="num">${bornCell}</td>
@@ -695,7 +695,7 @@
         <div class="sc-knight">♞</div>
         <div class="sc-head">
           <div class="sc-brand">Grandmaster Almanac</div>
-          <div class="sc-flag">${p.fed}</div>
+          <div class="sc-flag">${fedFlag(p.fed) || p.fed}</div>
         </div>
         <div class="sc-body">
           <div class="sc-title">${escapeHtml(p.name)}</div>
