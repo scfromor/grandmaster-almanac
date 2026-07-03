@@ -1,13 +1,20 @@
 {
   "status": "ok",
   "rating_period": "JUL26",
-  "total_players_published": 2145,
-  "active_gm_count": 1316,
+  "total_players_published": 2146,
+  "active_gm_count": 1317,
   "diff": {
-    "new_gms_count": 0,
+    "new_gms_count": 1,
     "transfers_count": 0,
     "deaths_count": 1,
-    "new_gms": [],
+    "new_gms": [
+      {
+        "id": "13715658",
+        "name": "Ansat, Aldiyar",
+        "fed": "KAZ",
+        "rating": 2500
+      }
+    ],
     "transfers": [],
     "deaths": [
       {
@@ -43,5 +50,5 @@
     }
   ],
   "errors": [],
-  "run_at_utc": "2026-07-02T20:28:37.510310+00:00"
+  "run_at_utc": "2026-07-03T01:17:01.994416+00:00"
 }
