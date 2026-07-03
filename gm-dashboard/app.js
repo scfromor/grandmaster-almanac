@@ -744,7 +744,6 @@
         </div>
         <div class="sc-foot">
           <span>FIDE GM · ${escapeHtml(p.fedName)}</span>
-          <span>${p.bday ? 'Est. ' + p.bday : ''}</span>
         </div>
       </div>
     `;
