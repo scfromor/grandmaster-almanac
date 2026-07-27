@@ -50,3 +50,35 @@ jobs:
           name: refresh-log
           path: data/refresh_log.json
           retention-days: 90
+
+      # After the monthly refresh has committed new data + player pages,
+      # sync the gm-dashboard/ folder to Neocities so scfromor.com sees the
+      # new FIDE ratings, regenerated player pages, and sitemap without any
+      # manual upload. Uses bcomnes/deploy-to-neocities which only uploads
+      # changed files (safe for the 2,146-page directory).
+      #
+      # The Neocities API deploys to the SITE ROOT, so we stage the folder
+      # into staging/chess/grandmaster_almanac/ to match the live URL path
+      # scfromor.com/chess/grandmaster_almanac/. cleanup: false guarantees
+      # nothing outside this subpath is touched — your other subsites are
+      # never orphaned or deleted.
+      - name: Re-checkout after auto-commit
+        uses: actions/checkout@v4
+        with:
+          ref: master
+
+      - name: Stage files under matching subpath
+        run: |
+          mkdir -p staging/chess/grandmaster_almanac
+          cp -R gm-dashboard/. staging/chess/grandmaster_almanac/
+          echo "Staged file count:"
+          find staging -type f | wc -l
+
+      - name: Deploy to Neocities
+        uses: bcomnes/deploy-to-neocities@v3
+        with:
+          api_key: ${{ secrets.NEOCITIES_API_KEY }}
+          cleanup: false
+          neocities_supporter: false
+          preview_before_deploy: true
+          dist_dir: staging
