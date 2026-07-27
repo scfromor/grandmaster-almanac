@@ -11,6 +11,8 @@ grandmaster at `gm-dashboard/player/<FIDE_ID>.html`, containing:
 
   * <title>, meta description, canonical URL, OpenGraph tags — real per-player
     metadata Google/Bing/social platforms can index and preview.
+    Canonical URLs are extensionless (player/<id>) to match Neocities'
+    default behavior of 301-redirecting .html requests to the clean URL.
   * Server-rendered profile facts (name, federation, rating, peak, birth,
     status) so the crawler sees content even without executing JS.
   * A boot script (`player.js`) that hydrates the page with the same
@@ -408,7 +410,11 @@ def build_json_ld(p: dict, canonical: str) -> str:
 
 
 def render_page(p: dict) -> str:
-    canonical = f"{BASE_URL}/player/{p['id']}.html"
+    # Files are written as player/<id>.html but Neocities auto-redirects
+    # requests to the extensionless URL player/<id>. Point the canonical +
+    # OpenGraph URLs at the extensionless form Neocities actually serves so
+    # crawlers index a single stable URL per player.
+    canonical = f"{BASE_URL}/player/{p['id']}"
     og_image_tag = ""
     if p.get("photo"):
         og_image_tag = f'<meta property="og:image" content="{esc(p["photo"])}" />'
@@ -447,8 +453,9 @@ def build_sitemap(players: list[dict]) -> str:
         f"<changefreq>monthly</changefreq><priority>1.0</priority></url>"
     ]
     for p in players:
+        # Extensionless URLs — matches canonical + Neocities' serving behavior.
         urls.append(
-            f"  <url><loc>{esc(BASE_URL)}/player/{esc(p['id'])}.html</loc>"
+            f"  <url><loc>{esc(BASE_URL)}/player/{esc(p['id'])}</loc>"
             f"<lastmod>{today}</lastmod><changefreq>monthly</changefreq>"
             "<priority>0.6</priority></url>"
         )
