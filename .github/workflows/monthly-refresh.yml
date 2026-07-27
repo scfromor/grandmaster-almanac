@@ -24,9 +24,32 @@ jobs:
         with:
           python-version: "3.12"
 
+      # Try up to 3 times to pull the new FIDE list. Timeouts here are
+      # transient network issues on ratings.fide.com; a quick retry usually
+      # succeeds. If all attempts fail we still fall through so downstream
+      # steps (page rebuild + Neocities deploy) can pick up any source-code
+      # changes that were pushed since the last deploy.
       - name: Run monthly refresh script
-        run: python3 data/refresh_dashboard.py
+        id: refresh
+        continue-on-error: true
+        run: |
+          for attempt in 1 2 3; do
+            echo "::group::Refresh attempt $attempt"
+            if python3 data/refresh_dashboard.py; then
+              echo "::endgroup::"
+              echo "refresh_ok=true" >> "$GITHUB_OUTPUT"
+              exit 0
+            fi
+            echo "::endgroup::"
+            echo "Attempt $attempt failed, sleeping 30s…"
+            sleep 30
+          done
+          echo "refresh_ok=false" >> "$GITHUB_OUTPUT"
+          echo "::warning::All 3 refresh attempts failed — will still rebuild pages + deploy from committed data.json"
+          exit 0
 
+      # Always rebuild pages, even if refresh failed — build_pages.py reads
+      # from the committed data.json so it produces a valid site regardless.
       - name: Rebuild per-player static pages + sitemap
         run: python3 data/build_pages.py
 
@@ -38,9 +61,15 @@ jobs:
             echo "No changes to data.json or generated pages — FIDE list unchanged or already up to date."
             exit 0
           fi
-          git add gm-dashboard/data.json gm-dashboard/player gm-dashboard/sitemap.xml data/refresh_log.json
-          PERIOD=$(python3 -c "import json; print(json.load(open('data/refresh_log.json'))['rating_period'])")
-          git commit -m "Monthly ratings refresh: ${PERIOD}"
+          git add gm-dashboard/data.json gm-dashboard/player gm-dashboard/sitemap.xml data/refresh_log.json 2>/dev/null || true
+          # Handle case where refresh failed and refresh_log.json wasn't updated
+          git add gm-dashboard/data.json gm-dashboard/player gm-dashboard/sitemap.xml
+          if [ -f data/refresh_log.json ]; then
+            PERIOD=$(python3 -c "import json; print(json.load(open('data/refresh_log.json')).get('rating_period', 'unknown'))")
+          else
+            PERIOD="page-rebuild-only"
+          fi
+          git commit -m "Monthly refresh + page rebuild: ${PERIOD}"
           git push
 
       - name: Upload refresh log as artifact
