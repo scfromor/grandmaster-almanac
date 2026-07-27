@@ -524,6 +524,24 @@ main { max-width: 1400px; margin: 0 auto; padding: 22px 20px 80px; }
 .profile-name { font-family: var(--font-display); font-size: var(--text-xl); font-weight: 600; line-height: 1.1; letter-spacing: -0.01em; }
 .profile-meta { color: var(--text-muted); font-size: var(--text-sm); margin-top: 4px; }
 .profile-meta .sep { color: var(--text-faint); margin: 0 6px; }
+.profile-permalink { margin-top: 8px; }
+.permalink-btn {
+  display: inline-flex; align-items: center; gap: 6px;
+  padding: 4px 10px;
+  border-radius: 6px;
+  background: transparent;
+  border: 1px solid var(--border);
+  color: var(--text-muted);
+  font-size: var(--text-xs);
+  text-decoration: none;
+  transition: background 120ms ease, color 120ms ease;
+}
+.permalink-btn:hover {
+  background: var(--surface-3, var(--surface-2));
+  color: var(--primary);
+  border-color: var(--primary);
+}
+.permalink-btn svg { flex-shrink: 0; }
 
 .profile-body {
   display: grid;
@@ -554,8 +572,72 @@ main { max-width: 1400px; margin: 0 auto; padding: 22px 20px 80px; }
   border-radius: 12px;
   padding: 14px 16px 12px;
 }
-.chart-title { font-size: var(--text-xs); text-transform: uppercase; letter-spacing: 0.04em; font-weight: 600; color: var(--text-muted); margin-bottom: 8px; }
+.chart-title { font-size: var(--text-xs); text-transform: uppercase; letter-spacing: 0.04em; font-weight: 600; color: var(--text-muted); margin-bottom: 8px; display: flex; align-items: center; gap: 8px; }
 .chart-box { position: relative; width: 100%; height: 240px; }
+
+/* "Estimated" badge — signals modeled/derived data (peak elo, radar, rating trend)
+   so users don't mistake it for a source-of-truth number from FIDE. */
+.est-badge {
+  display: inline-block;
+  padding: 1px 7px;
+  border-radius: 999px;
+  background: rgba(120, 100, 40, 0.14);
+  color: #8a6d1a;
+  font-size: 9.5px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  line-height: 1.5;
+  cursor: help;
+  border: 1px solid rgba(120, 100, 40, 0.22);
+  vertical-align: 1px;
+}
+[data-theme="dark"] .est-badge {
+  background: rgba(220, 190, 90, 0.14);
+  color: #d9c07a;
+  border-color: rgba(220, 190, 90, 0.28);
+}
+.stat .est-badge { margin-left: 6px; }
+
+/* ===== Per-player static page (player/<id>.html) ===== */
+/* Reuses the modal's profile-* classes but at page scope. Padding is applied
+   here instead of by the modal container. */
+.player-main { max-width: 1000px; margin: 0 auto; padding: 22px 20px 80px; }
+.player-article {
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  border-radius: 16px;
+  overflow: hidden;
+}
+.player-static .profile-head,
+.player-static .stat-row,
+.player-static .profile-body,
+.player-static .share-section,
+.player-static .revoked-note,
+.player-static .note {
+  padding-left: 28px;
+  padding-right: 28px;
+}
+.player-static .profile-head { padding-top: 28px; padding-bottom: 8px; }
+.player-static .note { padding-bottom: 22px; padding-top: 8px; }
+.brand-link {
+  display: flex; align-items: center; gap: 12px;
+  color: inherit; text-decoration: none;
+}
+.brand-link:hover h1 { color: var(--primary); }
+.back-link {
+  text-decoration: none;
+  font-size: var(--text-sm);
+  padding: 6px 12px;
+}
+@media (max-width: 640px) {
+  .player-static .profile-head,
+  .player-static .stat-row,
+  .player-static .profile-body,
+  .player-static .share-section,
+  .player-static .note { padding-left: 18px; padding-right: 18px; }
+  .back-link { display: none; }
+}
 
 /* Achievements */
 .achievements { padding: 0 32px 18px; }

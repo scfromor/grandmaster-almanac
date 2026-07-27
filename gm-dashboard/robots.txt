@@ -1,0 +1,4 @@
+User-agent: *
+Allow: /
+
+Sitemap: https://scfromor.com/chess/grandmaster_almanac/sitemap.xml

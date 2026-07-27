@@ -27,15 +27,18 @@ jobs:
       - name: Run monthly refresh script
         run: python3 data/refresh_dashboard.py
 
-      - name: Commit and push updated data.json
+      - name: Rebuild per-player static pages + sitemap
+        run: python3 data/build_pages.py
+
+      - name: Commit and push updated data + pages
         run: |
           git config user.name "gm-almanac-bot"
           git config user.email "actions@users.noreply.github.com"
-          if git diff --quiet -- gm-dashboard/data.json; then
-            echo "No changes to data.json — FIDE list unchanged or already up to date."
+          if git diff --quiet -- gm-dashboard/data.json gm-dashboard/player gm-dashboard/sitemap.xml; then
+            echo "No changes to data.json or generated pages — FIDE list unchanged or already up to date."
             exit 0
           fi
-          git add gm-dashboard/data.json data/refresh_log.json
+          git add gm-dashboard/data.json gm-dashboard/player gm-dashboard/sitemap.xml data/refresh_log.json
           PERIOD=$(python3 -c "import json; print(json.load(open('data/refresh_log.json'))['rating_period'])")
           git commit -m "Monthly ratings refresh: ${PERIOD}"
           git push

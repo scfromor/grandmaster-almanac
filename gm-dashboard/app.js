@@ -154,7 +154,13 @@
       el.addEventListener('change', () => { state.page = 1; applyFilters(); });
     });
     document.getElementById('reset').addEventListener('click', () => {
-      filterEls.forEach((id) => { document.getElementById(id).value = ''; });
+      // Reset each filter to its initial default value (matches the HTML source),
+      // not blank. Blanking the Status select flips the view from "Active (rated)"
+      // (~1,317 GMs) to "All players" (2,146), which is not what "Reset" should do.
+      filterEls.forEach((id) => {
+        const el = document.getElementById(id);
+        el.value = id === 'status' ? 'active' : '';
+      });
       state.page = 1;
       applyFilters();
     });
@@ -668,6 +674,12 @@
             ${escapeHtml(p.fedName)}${birthPlace}${transfer}
             <span class="sep">·</span>${ageStr}<span class="sep">·</span>${gameMode}<span class="sep">·</span>${statusLabel}
           </div>
+          <div class="profile-permalink">
+            <a href="player/${encodeURIComponent(p.id)}.html" class="permalink-btn" title="Open full profile page">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/><polyline points="15 3 21 3 21 9"/><line x1="10" y1="14" x2="21" y2="3"/></svg>
+              View full profile page
+            </a>
+          </div>
         </div>
       </div>
       ${revokedNote}
@@ -675,7 +687,7 @@
 
       <div class="stat-row">
         <div class="stat"><div class="stat-label">Current ELO</div><div class="stat-value">${p.rating ?? '—'}</div></div>
-        <div class="stat"><div class="stat-label">Peak ELO</div><div class="stat-value">${p.peak}</div></div>
+        <div class="stat"><div class="stat-label">Peak ELO<span class="est-badge" title="Peak ELO is a model-derived estimate for most players. Historical peaks for well-known legends (e.g. Carlsen 2882, Kasparov 2851, Fischer 2785, Tal 2705) are hard-coded from FIDE records.">Est.</span></div><div class="stat-value">${p.peak}</div></div>
         <div class="stat"><div class="stat-label">${p.deceased ? 'Lifespan' : 'Born'}</div><div class="stat-value">${p.bday ?? '—'}${p.deceased && p.deathYear ? ` – ${p.deathYear}` : ''}</div></div>
         <div class="stat"><div class="stat-label">GM Title</div><div class="stat-value">${p.revoked && p.gmYear && p.revokedYear ? `<span class="gm-revoked">${p.gmYear} <span class="gm-arrow">→</span> ${p.revokedYear}</span>` : (p.gmYear ?? '—')}</div></div>
         <div class="stat"><div class="stat-label">Games</div><div class="stat-value">${p.games || 0}</div></div>
@@ -684,11 +696,11 @@
 
       <div class="profile-body">
         <div class="chart-card">
-          <div class="chart-title">10-Year Rating Trend</div>
+          <div class="chart-title">10-Year Rating Trend<span class="est-badge" title="Historical rating series is reconstructed from a deterministic per-player model anchored on current and peak ELO — not sourced from monthly FIDE lists.">Estimated</span></div>
           <div class="chart-box"><canvas id="eloChart"></canvas></div>
         </div>
         <div class="chart-card">
-          <div class="chart-title">Playstyle Radar</div>
+          <div class="chart-title">Playstyle Radar<span class="est-badge" title="Playstyle axes (Aggressive, Positional, Tactical, Endgame, Opening Prep, Defense) are derived from a heuristic model, not measured from game data.">Estimated</span></div>
           <div class="chart-box"><canvas id="radarChart"></canvas></div>
         </div>
       </div>
