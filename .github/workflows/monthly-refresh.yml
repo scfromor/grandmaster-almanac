@@ -21,6 +21,11 @@ on:
         description: "Run even if data.json already has the current rating period"
         type: boolean
         default: true
+      list_url:
+        description: "Optional: URL of a standard_rating_list.zip to use instead of ratings.fide.com (workaround for the datacenter-IP block)"
+        type: string
+        required: false
+        default: ""
 
 permissions:
   contents: write
@@ -68,6 +73,9 @@ jobs:
         id: refresh
         if: steps.gate.outputs.run == 'true'
         continue-on-error: true
+        env:
+          # Empty on scheduled runs, so the official FIDE URL is used as normal.
+          GM_FIDE_LIST_URL: ${{ inputs.list_url }}
         run: |
           for attempt in 1 2 3; do
             echo "::group::Refresh attempt $attempt"

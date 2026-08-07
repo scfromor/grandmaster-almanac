@@ -312,15 +312,34 @@ FIDE_UA = (
 
 
 def download_fide_list():
-    """Download and unzip the latest FIDE standard rating list."""
-    log("Downloading latest FIDE standard rating list...")
+    """Download and unzip the latest FIDE standard rating list.
+
+    As of August 2026 ratings.fide.com (62.171.184.225) accepts the TCP
+    connection from cloud/datacenter IPs and then immediately RSTs the TLS
+    ClientHello -- an IP-reputation firewall, not a TLS or User-Agent problem.
+    GitHub Actions runners are affected, so the scheduled refresh cannot always
+    reach the official host.
+
+    GM_FIDE_LIST_URL is the escape hatch: point it at any URL serving the same
+    standard_rating_list zip (a copy you uploaded from a residential
+    connection, a proxy, or a mirror) and we fetch from there instead. The
+    parsing path is unchanged, so the resulting data.json is byte-identical to
+    what the official download would have produced.
+    """
+    override_url = (os.environ.get("GM_FIDE_LIST_URL") or "").strip()
+    source_url = override_url or FIDE_ZIP_URL
+    if override_url:
+        log(f"Using GM_FIDE_LIST_URL override: {source_url}")
+    else:
+        log("Downloading latest FIDE standard rating list...")
+
     for stale in (FIDE_ZIP_PATH, FIDE_TXT_PATH):
         if os.path.exists(stale):
             os.remove(stale)
 
     result = subprocess.run(
         [
-            "curl", "-sL", "-o", FIDE_ZIP_PATH, FIDE_ZIP_URL,
+            "curl", "-sL", "-o", FIDE_ZIP_PATH, source_url,
             "-A", FIDE_UA,
             "-H", "Accept: application/zip,application/octet-stream,*/*",
             "-H", "Referer: https://ratings.fide.com/download_lists.phtml",
@@ -335,8 +354,19 @@ def download_fide_list():
     )
     http_code = result.stdout.strip()
     if http_code != "200" or not os.path.exists(FIDE_ZIP_PATH):
+        hint = ""
+        # curl 28 = timeout, 35 = TLS connect error. Against ratings.fide.com
+        # from a datacenter IP these mean the firewall dropped us, not that
+        # anything is wrong with the request itself.
+        if not override_url and result.returncode in (7, 28, 35, 56):
+            hint = (
+                " — this is the ratings.fide.com datacenter-IP block, not a bad request. "
+                "Re-run the workflow with the list_url input set to a reachable copy "
+                "of standard_rating_list.zip to refresh from an alternate source."
+            )
         raise RuntimeError(
-            f"FIDE download failed (HTTP {http_code!r}, curl exit {result.returncode})"
+            f"Download failed from {source_url} "
+            f"(HTTP {http_code!r}, curl exit {result.returncode}){hint}"
         )
 
     # A tarpit/error page can still be written to disk with a 200. Verify we
