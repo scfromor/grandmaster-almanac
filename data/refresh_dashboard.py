@@ -34,6 +34,11 @@ import subprocess
 import sys
 from datetime import datetime, timezone
 
+# Local enrichment modules (in the same data/ directory as this script).
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+from style_model import compute_style  # noqa: E402
+from wiki_enrichment import enrich_from_wikipedia  # noqa: E402
+
 # Resolve paths relative to the repo root (this file lives in <repo>/data/),
 # so the script works identically on a local machine, in this sandbox, or in
 # a GitHub Actions runner — no hardcoded absolute paths.
@@ -563,6 +568,21 @@ def merge_and_diff(old_data, fide_gms, rating_period):
             except Exception as exc:
                 log(f"Wikipedia birth-country lookup failed for {fide_rec['name']!r}: {exc}")
 
+            # Best-effort bio + photo pull from Wikipedia. Same conservative
+            # contract as the birth-country lookup: never fabricates, returns
+            # empty strings on failure, and can't crash the refresh.
+            try:
+                wiki = enrich_from_wikipedia(fide_rec["name"])
+            except Exception as exc:
+                log(f"Wikipedia bio/photo lookup failed for {fide_rec['name']!r}: {exc}")
+                wiki = {"bio": "", "bioFull": "", "bioSource": "",
+                        "photo": "", "photoSource": ""}
+
+            # Deterministic playstyle radar. Same six-axis model the shipped
+            # roster uses (visibly labelled "Estimated" on the site), so brand
+            # new GMs no longer render an empty radar chart.
+            style_radar = compute_style(pid, fide_rec["rating"], fide_rec["bday"])
+
             # birthCountry (the FIDE-style federation code) has no reliable
             # equivalent from a Wikidata country name, so it stays blank even
             # when birthCountryName is resolved. app.js only needs the human
@@ -586,9 +606,13 @@ def merge_and_diff(old_data, fide_gms, rating_period):
                 "age": (datetime.now().year - fide_rec["bday"]) if fide_rec["bday"] else None,
                 "active": fide_rec.get("active", True),
                 "history": [fide_rec["rating"]] if fide_rec["rating"] is not None else [],
-                "style": {},
+                "style": style_radar,
                 "birthCity": birth_city,
-                "photo": "",
+                "photo": wiki["photo"],
+                "photoSource": wiki["photoSource"],
+                "bio": wiki["bio"],
+                "bioFull": wiki["bioFull"],
+                "bioSource": wiki["bioSource"],
                 "deceased": False,
                 "deathYear": None,
                 "fedHistory": [fide_rec["fed"]],
@@ -656,6 +680,60 @@ def merge_and_diff(old_data, fide_gms, rating_period):
     return new_data, diff
 
 
+def backfill_bios(players, budget=None):
+    """Fill in missing Wikipedia bios for existing players, up to a budget.
+
+    We add the `bio` field to the entire roster over multiple monthly runs
+    rather than in a single 40-minute burst that would hammer Wikipedia's rate
+    limiter. Each run pulls up to `budget` players who don't yet have a bio,
+    marking them regardless of outcome so a player who has no Wikipedia
+    article isn't re-queried every month.
+
+    Players are tagged with `bioLookupTried: True` once attempted. Set the
+    env var GM_BIO_BACKFILL_BUDGET=0 to disable the backfill entirely.
+    """
+    if budget is None:
+        budget = int(os.environ.get("GM_BIO_BACKFILL_BUDGET", "50"))
+    if budget <= 0:
+        return 0
+
+    attempted = 0
+    for player in players:
+        if attempted >= budget:
+            break
+        # Skip anyone we've already tried, or anyone with a bio already.
+        if player.get("bio") or player.get("bioLookupTried"):
+            continue
+        # Prioritise active/rated players -- historical/inactive entries
+        # often lack articles and would waste budget.
+        if not player.get("active") or not player.get("rating"):
+            player["bioLookupTried"] = True
+            continue
+        try:
+            wiki = enrich_from_wikipedia(player["name"])
+        except Exception as exc:
+            log(f"Bio backfill failed for {player['name']!r}: {exc}")
+            wiki = None
+
+        attempted += 1
+        player["bioLookupTried"] = True
+        if not wiki:
+            continue
+        if wiki["bio"]:
+            player["bio"] = wiki["bio"]
+            player["bioFull"] = wiki["bioFull"]
+            player["bioSource"] = wiki["bioSource"]
+        # Only overwrite photo when the player has none. Existing photos in
+        # the shipped dataset are hand-curated and should not be replaced
+        # by an automated Wikipedia lookup.
+        if wiki["photo"] and not player.get("photo"):
+            player["photo"] = wiki["photo"]
+            player["photoSource"] = wiki["photoSource"]
+
+    log(f"Bio backfill attempted {attempted} players (budget={budget})")
+    return attempted
+
+
 def main():
     os.makedirs(DATA_DIR, exist_ok=True)
     os.makedirs(DASHBOARD_DIR, exist_ok=True)
@@ -686,6 +764,16 @@ def main():
         sys.exit(1)
 
     new_data, diff = merge_and_diff(old_data, fide_gms, rating_period)
+
+    # Backfill Wikipedia bios for existing roster in small monthly batches.
+    # The refresh_dashboard.py comment header calls this out as best-effort
+    # enrichment that never crashes the refresh.
+    try:
+        backfill_attempted = backfill_bios(new_data["players"])
+    except Exception as exc:
+        log(f"Bio backfill pass failed (continuing): {exc}")
+        backfill_attempted = 0
+    diff["bio_backfill_attempted"] = backfill_attempted
 
     save_json(DASHBOARD_JSON, new_data)
 

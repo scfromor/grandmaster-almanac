@@ -253,6 +253,8 @@ PAGE_TEMPLATE = """<!doctype html>
             </div>
           </div>
 
+          {bio_block}
+
           <div class="stat-row">
             <div class="stat"><div class="stat-label">Current ELO</div><div class="stat-value">{rating}</div></div>
             <div class="stat"><div class="stat-label">Peak ELO<span class="est-badge" title="Peak ELO is a model-derived estimate for most players. Historical peaks for well-known legends are hard-coded from FIDE records.">Est.</span></div><div class="stat-value">{peak}</div></div>
@@ -388,6 +390,10 @@ def build_json_ld(p: dict, canonical: str) -> str:
     }
     if p.get("photo"):
         obj["image"] = p["photo"]
+    # A Wikipedia bio makes the schema.org Person entry richer for search --
+    # crawlers will show the description text alongside the name/photo.
+    if p.get("bio"):
+        obj["description"] = p["bio"]
     if p.get("bday"):
         obj["birthDate"] = str(p["bday"])
     if p.get("deathYear"):
@@ -407,6 +413,44 @@ def build_json_ld(p: dict, canonical: str) -> str:
         award_parts.append(f"({p['gmYear']})")
     obj["award"] = " ".join(award_parts)
     return json.dumps(obj, indent=2, ensure_ascii=False)
+
+
+def build_bio_block(p: dict) -> str:
+    """Optional Wikipedia bio + photo attribution block for the player card.
+
+    Rendered directly below the profile head. Empty string when the player has
+    no `bio` field yet (most of the shipped roster; the monthly refresh
+    backfills them a batch at a time). CC-BY-SA attribution is required for
+    Wikimedia Commons images, so we always link back to the source article
+    when we're showing an auto-pulled photo.
+    """
+    bio = (p.get("bio") or "").strip()
+    bio_source = (p.get("bioSource") or "").strip()
+    photo_source = (p.get("photoSource") or "").strip()
+
+    if not bio and not photo_source:
+        return ""
+
+    parts = ['<div class="profile-bio">']
+    if bio:
+        parts.append(f'<p class="bio-text">{esc(bio)}</p>')
+    attribution_bits = []
+    if bio and bio_source:
+        attribution_bits.append(
+            f'Bio from <a href="{esc(bio_source)}" rel="noopener">Wikipedia</a>'
+        )
+    if photo_source:
+        # If the same article gave us both photo and bio, we already linked it.
+        if not (bio and bio_source and photo_source == bio_source):
+            attribution_bits.append(
+                f'Photo via <a href="{esc(photo_source)}" rel="noopener">Wikimedia Commons</a> (CC BY-SA)'
+            )
+        elif bio_source:
+            attribution_bits[-1] += ' \u00b7 photo via Wikimedia Commons (CC BY-SA)'
+    if attribution_bits:
+        parts.append('<p class="bio-attribution">' + ' \u00b7 '.join(attribution_bits) + '</p>')
+    parts.append('</div>')
+    return "".join(parts)
 
 
 def render_page(p: dict) -> str:
@@ -436,6 +480,7 @@ def render_page(p: dict) -> str:
         avatar_html=avatar_html_for(p),
         name=esc(p["name"]),
         meta_line=build_meta_line(p),
+        bio_block=build_bio_block(p),
         rating=esc(p.get("rating") if p.get("rating") is not None else "\u2014"),
         peak=esc(p.get("peak") if p.get("peak") is not None else "\u2014"),
         born_label=born_label,

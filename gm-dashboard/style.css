@@ -768,3 +768,32 @@ main { max-width: 1400px; margin: 0 auto; padding: 22px 20px 80px; }
   .ghost-btn.icon-only { display: none; }
   .page-jump input { width: 48px; }
 }
+
+/* ---- Wikipedia bio block on player pages ---- */
+.profile-bio {
+  margin: 12px 0 20px;
+  padding: 14px 16px;
+  background: rgba(255, 255, 255, 0.03);
+  border-left: 3px solid rgba(255, 255, 255, 0.15);
+  border-radius: 6px;
+  font-size: 0.95rem;
+  line-height: 1.5;
+}
+.profile-bio .bio-text {
+  margin: 0;
+  color: rgba(255, 255, 255, 0.88);
+}
+.profile-bio .bio-attribution {
+  margin: 8px 0 0;
+  font-size: 0.78rem;
+  color: rgba(255, 255, 255, 0.5);
+}
+.profile-bio .bio-attribution a {
+  color: rgba(255, 255, 255, 0.7);
+  text-decoration: underline;
+  text-decoration-color: rgba(255, 255, 255, 0.25);
+}
+.profile-bio .bio-attribution a:hover {
+  color: rgba(255, 255, 255, 0.9);
+  text-decoration-color: rgba(255, 255, 255, 0.5);
+}
