@@ -37,7 +37,7 @@ from datetime import datetime, timezone
 # Local enrichment modules (in the same data/ directory as this script).
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from style_model import compute_style  # noqa: E402
-from wiki_enrichment import enrich_from_wikipedia  # noqa: E402
+from wiki_enrichment import enrich_from_wikipedia, find_wikipedia_summary  # noqa: E402
 
 # Resolve paths relative to the repo root (this file lives in <repo>/data/),
 # so the script works identically on a local machine, in this sandbox, or in
@@ -680,6 +680,150 @@ def merge_and_diff(old_data, fide_gms, rating_period):
     return new_data, diff
 
 
+# ---------------------------------------------------------------------------
+# Photo candidate pipeline.
+#
+# For any active/rated GM without a photo, we look up a Wikipedia candidate
+# image and stash it in data/photo_candidates.json for human review. Once you
+# approve a candidate in data/photo_approvals.json, it flows into
+# player.photo on the next refresh. This is intentionally NOT automatic --
+# Wikipedia's article search can return the wrong person (common surnames,
+# etc.) and a wrong photo on a player card is high-embarrassment; birth
+# country blanks silently, photos are visible on every card.
+#
+# See gm-dashboard/photo-review.html for the review UI.
+# ---------------------------------------------------------------------------
+
+CANDIDATES_PATH = os.path.join("data", "photo_candidates.json")
+APPROVALS_PATH = os.path.join("data", "photo_approvals.json")
+
+
+def _repo_path(rel):
+    return os.path.join(WORKSPACE, rel)
+
+
+def load_approvals():
+    path = _repo_path(APPROVALS_PATH)
+    if not os.path.exists(path):
+        return {}
+    try:
+        with open(path, encoding="utf-8") as fh:
+            data = json.load(fh)
+    except (OSError, json.JSONDecodeError) as exc:
+        log(f"Could not read photo_approvals.json ({exc}); treating as empty.")
+        return {}
+    # Normalise: {fide_id: {"status": "approved"|"rejected", "photo": url, "photoSource": url}}
+    return data.get("approvals", {}) if isinstance(data, dict) else {}
+
+
+def save_candidates(candidates):
+    path = _repo_path(CANDIDATES_PATH)
+    os.makedirs(os.path.dirname(path), exist_ok=True)
+    payload = {
+        "generated_at_utc": datetime.now(timezone.utc).isoformat(),
+        "count": len(candidates),
+        "candidates": candidates,
+    }
+    with open(path, "w", encoding="utf-8") as fh:
+        json.dump(payload, fh, ensure_ascii=False, indent=2)
+
+
+def apply_photo_approvals(players, approvals):
+    """Attach approved photos to players; strip rejected candidates."""
+    if not approvals:
+        return 0
+    applied = 0
+    for player in players:
+        rec = approvals.get(player["id"])
+        if not rec:
+            continue
+        status = (rec.get("status") or "").lower()
+        if status == "approved" and rec.get("photo") and not player.get("photo"):
+            player["photo"] = rec["photo"]
+            player["photoSource"] = rec.get("photoSource", "")
+            applied += 1
+    log(f"Applied {applied} approved photos from photo_approvals.json")
+    return applied
+
+
+def collect_photo_candidates(players, budget=None):
+    """
+    Look up Wikipedia photo candidates for active/rated GMs without a photo.
+
+    Writes data/photo_candidates.json for the review UI. Each run adds up to
+    `budget` new candidates (default 40); players already carrying
+    photoCandidateTried are skipped so a full-roster sweep completes over
+    several months. The env var GM_PHOTO_CANDIDATE_BUDGET overrides.
+    """
+    if budget is None:
+        budget = int(os.environ.get("GM_PHOTO_CANDIDATE_BUDGET", "40"))
+    if budget <= 0:
+        return []
+
+    # Load any existing candidate list so we accumulate rather than reset.
+    existing = []
+    path = _repo_path(CANDIDATES_PATH)
+    if os.path.exists(path):
+        try:
+            with open(path, encoding="utf-8") as fh:
+                existing = json.load(fh).get("candidates", []) or []
+        except (OSError, json.JSONDecodeError):
+            existing = []
+    already_candidate_ids = {c.get("id") for c in existing}
+
+    added = 0
+    for player in players:
+        if added >= budget:
+            break
+        pid = player["id"]
+        if player.get("photo"):
+            continue
+        if player.get("photoCandidateTried"):
+            continue
+        if pid in already_candidate_ids:
+            continue
+        if not player.get("active") or not player.get("rating"):
+            player["photoCandidateTried"] = True
+            continue
+        try:
+            summary = find_wikipedia_summary(player["name"])
+        except Exception as exc:
+            log(f"Photo candidate lookup failed for {player['name']!r}: {exc}")
+            summary = None
+
+        player["photoCandidateTried"] = True
+        added += 1
+        if not summary:
+            continue
+
+        original = (summary.get("originalimage") or {}).get("source")
+        thumbnail = (summary.get("thumbnail") or {}).get("source")
+        photo_url = original or thumbnail
+        if not photo_url:
+            continue
+        canonical = (
+            summary.get("content_urls", {}).get("desktop", {}).get("page") or ""
+        )
+        existing.append({
+            "id": pid,
+            "name": player["name"],
+            "fed": player.get("fed", ""),
+            "fedName": player.get("fedName", ""),
+            "rating": player.get("rating"),
+            "bday": player.get("bday"),
+            "photo": photo_url,
+            "photoThumbnail": thumbnail or photo_url,
+            "photoSource": canonical,
+            "wikipedia_title": summary.get("title", ""),
+            "wikipedia_description": summary.get("description", ""),
+            "added_at_utc": datetime.now(timezone.utc).isoformat(),
+        })
+
+    save_candidates(existing)
+    log(f"Photo candidates: added {added}, total pending {len(existing)}")
+    return existing
+
+
 def backfill_bios(players, budget=None):
     """Fill in missing Wikipedia bios for existing players, up to a budget.
 
@@ -764,6 +908,24 @@ def main():
         sys.exit(1)
 
     new_data, diff = merge_and_diff(old_data, fide_gms, rating_period)
+
+    # Apply any human-approved photo candidates BEFORE we look for new ones,
+    # so an approved player is no longer flagged as needing a candidate.
+    try:
+        approvals = load_approvals()
+        applied_photos = apply_photo_approvals(new_data["players"], approvals)
+    except Exception as exc:
+        log(f"Applying photo approvals failed (continuing): {exc}")
+        applied_photos = 0
+    diff["photos_applied_from_approvals"] = applied_photos
+
+    # Then queue new photo candidates for review, up to a monthly budget.
+    try:
+        candidates = collect_photo_candidates(new_data["players"])
+    except Exception as exc:
+        log(f"Photo candidate collection failed (continuing): {exc}")
+        candidates = []
+    diff["photo_candidates_total"] = len(candidates)
 
     # Backfill Wikipedia bios for existing roster in small monthly batches.
     # The refresh_dashboard.py comment header calls this out as best-effort

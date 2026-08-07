@@ -1,0 +1,190 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <meta name="robots" content="noindex, nofollow" />
+  <title>Photo review — Grandmaster Almanac</title>
+  <link rel="stylesheet" href="style.css" />
+  <style>
+    body { padding: 24px; }
+    .review-toolbar { display: flex; align-items: center; gap: 12px; padding: 12px 16px; margin-bottom: 20px; background: rgba(255,255,255,0.05); border-radius: 8px; }
+    .review-toolbar .counts { flex: 1; font-size: 0.95rem; }
+    .review-toolbar button { padding: 8px 14px; border: 1px solid rgba(255,255,255,0.2); background: rgba(255,255,255,0.08); color: #fff; border-radius: 6px; cursor: pointer; font-size: 0.9rem; }
+    .review-toolbar button:hover { background: rgba(255,255,255,0.15); }
+    .cand-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 16px; }
+    .cand-card { background: rgba(255,255,255,0.04); border: 1px solid rgba(255,255,255,0.08); border-radius: 10px; padding: 14px; display: flex; flex-direction: column; gap: 10px; }
+    .cand-card.approved { border-color: rgba(60,200,120,0.5); background: rgba(60,200,120,0.05); }
+    .cand-card.rejected { border-color: rgba(220,80,80,0.4); background: rgba(220,80,80,0.05); }
+    .cand-photo { width: 100%; aspect-ratio: 1 / 1; background-color: rgba(255,255,255,0.05); background-size: cover; background-position: center; border-radius: 8px; }
+    .cand-name { font-weight: 600; font-size: 1rem; }
+    .cand-meta { font-size: 0.85rem; color: rgba(255,255,255,0.65); line-height: 1.4; }
+    .cand-meta a { color: #7ec8ff; text-decoration: none; }
+    .cand-actions { display: flex; gap: 6px; margin-top: auto; }
+    .cand-actions button { flex: 1; padding: 8px 10px; border: none; border-radius: 6px; color: #fff; font-size: 0.85rem; cursor: pointer; }
+    .cand-actions button.approve { background: rgba(60,200,120,0.55); }
+    .cand-actions button.reject  { background: rgba(220,80,80,0.5); }
+    .cand-actions button.skip    { background: rgba(255,255,255,0.15); }
+    .cand-status-badge { display: inline-block; padding: 2px 8px; border-radius: 4px; font-size: 0.75rem; font-weight: 600; }
+    .cand-status-badge.approved { background: rgba(60,200,120,0.4); }
+    .cand-status-badge.rejected { background: rgba(220,80,80,0.4); }
+    .review-empty { padding: 40px; text-align: center; color: rgba(255,255,255,0.6); }
+    .review-instructions { padding: 12px 16px; margin-bottom: 20px; background: rgba(126,200,255,0.08); border-left: 3px solid #7ec8ff; border-radius: 6px; font-size: 0.9rem; line-height: 1.5; }
+    .review-instructions code { background: rgba(0,0,0,0.3); padding: 1px 6px; border-radius: 3px; }
+    .filter-controls { display: flex; gap: 8px; margin-bottom: 12px; flex-wrap: wrap; }
+    .filter-controls label { font-size: 0.85rem; color: rgba(255,255,255,0.7); }
+    .filter-controls select, .filter-controls input { padding: 4px 8px; border-radius: 4px; border: 1px solid rgba(255,255,255,0.15); background: rgba(0,0,0,0.3); color: #fff; }
+  </style>
+</head>
+<body>
+  <h1 style="margin-top: 0;">Photo review</h1>
+  <div class="review-instructions">
+    Approve, reject, or skip each Wikipedia photo candidate. Your decisions stay in this browser session until you click <strong>Export approvals</strong>, which downloads an updated <code>photo_approvals.json</code>. Commit that file to <code>data/photo_approvals.json</code> in the repo. The next monthly refresh will attach approved photos to their players and stop surfacing rejected ones.
+  </div>
+  <div class="review-toolbar">
+    <div class="counts">
+      <span id="count-pending">–</span> pending ·
+      <span id="count-approved" style="color:#8ee5b8;">–</span> approved ·
+      <span id="count-rejected" style="color:#ff9b9b;">–</span> rejected ·
+      <span id="count-total">–</span> total in queue
+    </div>
+    <button id="btn-export">Export approvals</button>
+    <button id="btn-load-approvals">Load existing approvals</button>
+  </div>
+  <div class="filter-controls">
+    <label>Show:
+      <select id="filter-status">
+        <option value="pending" selected>Pending only</option>
+        <option value="all">All</option>
+        <option value="approved">Approved</option>
+        <option value="rejected">Rejected</option>
+      </select>
+    </label>
+    <label>Search: <input id="filter-search" type="search" placeholder="name / federation…" /></label>
+  </div>
+  <div id="grid" class="cand-grid"></div>
+  <script>
+    // The candidate/approvals JSON files live one directory up because this
+    // page is served from gm-dashboard/ while data lives in <repo>/data/.
+    const CANDIDATES_URL = "../data/photo_candidates.json";
+    const APPROVALS_URL  = "../data/photo_approvals.json";
+    const approvals = {};
+    let candidates = [];
+
+    async function loadJson(url) {
+      try {
+        const r = await fetch(url, { cache: "no-store" });
+        if (!r.ok) return null;
+        return await r.json();
+      } catch (e) { return null; }
+    }
+
+    async function init() {
+      const cand = await loadJson(CANDIDATES_URL);
+      candidates = (cand && cand.candidates) || [];
+      const appr = await loadJson(APPROVALS_URL);
+      if (appr && appr.approvals) Object.assign(approvals, appr.approvals);
+      render();
+    }
+
+    function decision(id, status) {
+      const cand = candidates.find(c => c.id === id);
+      if (!cand) return;
+      approvals[id] = { status, photo: cand.photo, photoSource: cand.photoSource, name: cand.name };
+      render();
+    }
+
+    function clearDecision(id) { delete approvals[id]; render(); }
+
+    function esc(s) {
+      return String(s == null ? "" : s)
+        .replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;")
+        .replace(/"/g, "&quot;").replace(/'/g, "&#39;");
+    }
+
+    function render() {
+      const grid = document.getElementById("grid");
+      const filterStatus = document.getElementById("filter-status").value;
+      const search = document.getElementById("filter-search").value.toLowerCase().trim();
+
+      let pending = 0, approved = 0, rejected = 0;
+      for (const c of candidates) {
+        const s = (approvals[c.id] && approvals[c.id].status) || "pending";
+        if (s === "approved") approved++;
+        else if (s === "rejected") rejected++;
+        else pending++;
+      }
+      document.getElementById("count-pending").textContent = pending;
+      document.getElementById("count-approved").textContent = approved;
+      document.getElementById("count-rejected").textContent = rejected;
+      document.getElementById("count-total").textContent = candidates.length;
+
+      const html = candidates
+        .filter(c => {
+          const s = (approvals[c.id] && approvals[c.id].status) || "pending";
+          if (filterStatus !== "all" && s !== filterStatus) return false;
+          if (search) {
+            const hay = (c.name + " " + (c.fed || "") + " " + (c.fedName || "")).toLowerCase();
+            if (!hay.includes(search)) return false;
+          }
+          return true;
+        })
+        .map(c => {
+          const s = (approvals[c.id] && approvals[c.id].status) || "pending";
+          const bday = c.bday ? " · b. " + c.bday : "";
+          const rating = c.rating ? " · " + c.rating : "";
+          const desc = c.wikipedia_description
+            ? '<div class="cand-meta">' + esc(c.wikipedia_description) + '</div>' : "";
+          const badge = s === "approved" ? '<span class="cand-status-badge approved">Approved</span>'
+                     : s === "rejected" ? '<span class="cand-status-badge rejected">Rejected</span>' : "";
+          return '<div class="cand-card ' + s + '">' +
+            '<div class="cand-photo" style="background-image:url(\'' + esc(c.photoThumbnail || c.photo) + '\')"></div>' +
+            '<div><div class="cand-name">' + esc(c.name) + ' ' + badge + '</div>' +
+            '<div class="cand-meta">' + esc(c.fedName || c.fed || "") + esc(rating) + esc(bday) + '</div>' +
+            desc +
+            '<div class="cand-meta"><a href="' + esc(c.photoSource) + '" target="_blank" rel="noopener">Wikipedia article</a></div></div>' +
+            '<div class="cand-actions">' +
+            '<button class="approve" data-id="' + esc(c.id) + '" data-action="approve">Approve</button>' +
+            '<button class="reject" data-id="' + esc(c.id) + '" data-action="reject">Reject</button>' +
+            '<button class="skip" data-id="' + esc(c.id) + '" data-action="skip">Skip</button>' +
+            '</div></div>';
+        })
+        .join("");
+
+      grid.innerHTML = html || '<div class="review-empty">No candidates match this filter.</div>';
+    }
+
+    document.addEventListener("DOMContentLoaded", () => {
+      init();
+      document.getElementById("filter-status").addEventListener("change", render);
+      document.getElementById("filter-search").addEventListener("input", render);
+      document.getElementById("grid").addEventListener("click", (ev) => {
+        const btn = ev.target.closest("button[data-action]");
+        if (!btn) return;
+        const id = btn.dataset.id, act = btn.dataset.action;
+        if (act === "skip") clearDecision(id);
+        else decision(id, act === "approve" ? "approved" : "rejected");
+      });
+      document.getElementById("btn-export").addEventListener("click", () => {
+        const payload = { exported_at_utc: new Date().toISOString(), approvals };
+        const blob = new Blob([JSON.stringify(payload, null, 2)], { type: "application/json" });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement("a");
+        a.href = url; a.download = "photo_approvals.json";
+        document.body.appendChild(a); a.click();
+        setTimeout(() => { document.body.removeChild(a); URL.revokeObjectURL(url); }, 0);
+      });
+      document.getElementById("btn-load-approvals").addEventListener("click", async () => {
+        const appr = await loadJson(APPROVALS_URL);
+        if (appr && appr.approvals) {
+          for (const k in approvals) delete approvals[k];
+          Object.assign(approvals, appr.approvals);
+          render();
+        } else {
+          alert("No existing photo_approvals.json found (or empty).");
+        }
+      });
+    });
+  </script>
+</body>
+</html>
