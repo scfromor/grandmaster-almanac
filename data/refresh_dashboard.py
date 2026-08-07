@@ -298,17 +298,58 @@ def log(msg):
     print(f"[refresh_dashboard] {msg}", flush=True)
 
 
+# ratings.fide.com tarpits bare `curl` User-Agents from datacenter IPs: the
+# connection is accepted but never answered, so the request hangs instead of
+# returning an HTTP error. That is exactly what killed the 2026-08-03 run --
+# three attempts each hung to the full subprocess timeout. Send a browser UA,
+# bound BOTH the connect and total time at the curl level (so curl gives up
+# cleanly and reports a code instead of letting Python kill it), and let curl
+# do its own retries on top of the outer loop.
+FIDE_UA = (
+    "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 "
+    "(KHTML, like Gecko) Chrome/127.0.0.0 Safari/537.36"
+)
+
+
 def download_fide_list():
     """Download and unzip the latest FIDE standard rating list."""
     log("Downloading latest FIDE standard rating list...")
+    for stale in (FIDE_ZIP_PATH, FIDE_TXT_PATH):
+        if os.path.exists(stale):
+            os.remove(stale)
+
     result = subprocess.run(
-        ["curl", "-sL", "-o", FIDE_ZIP_PATH, FIDE_ZIP_URL, "-w", "%{http_code}"],
-        capture_output=True, text=True, timeout=120,
+        [
+            "curl", "-sL", "-o", FIDE_ZIP_PATH, FIDE_ZIP_URL,
+            "-A", FIDE_UA,
+            "-H", "Accept: application/zip,application/octet-stream,*/*",
+            "-H", "Referer: https://ratings.fide.com/download_lists.phtml",
+            "--connect-timeout", "30",
+            "--max-time", "300",
+            "--retry", "2",
+            "--retry-delay", "10",
+            "--retry-all-errors",
+            "-w", "%{http_code}",
+        ],
+        capture_output=True, text=True, timeout=360,
     )
     http_code = result.stdout.strip()
     if http_code != "200" or not os.path.exists(FIDE_ZIP_PATH):
-        raise RuntimeError(f"FIDE download failed (HTTP {http_code})")
+        raise RuntimeError(
+            f"FIDE download failed (HTTP {http_code!r}, curl exit {result.returncode})"
+        )
 
+    # A tarpit/error page can still be written to disk with a 200. Verify we
+    # actually received a zip archive of plausible size before trusting it --
+    # the STANDARD txt zip is ~12 MB, so anything under 1 MB is not the list.
+    size = os.path.getsize(FIDE_ZIP_PATH)
+    if size < 1_000_000:
+        raise RuntimeError(f"FIDE download too small to be the rating list ({size} bytes)")
+    with open(FIDE_ZIP_PATH, "rb") as fh:
+        if fh.read(2) != b"PK":
+            raise RuntimeError("FIDE download is not a zip archive (got an error page?)")
+
+    log(f"Downloaded {size / 1_048_576:.2f} MB, unzipping...")
     subprocess.run(["unzip", "-o", FIDE_ZIP_PATH, "-d", DATA_DIR],
                     capture_output=True, text=True, check=True)
 

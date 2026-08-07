@@ -1,13 +1,26 @@
 name: Monthly FIDE ratings refresh
 
-# Runs automatically on the 3rd of every month at 09:00 UTC (FIDE typically
-# publishes the new standard rating list on the 1st, so this gives a
-# 2-day buffer). Can also be triggered manually from the Actions tab for
-# testing or an out-of-band refresh.
+# FIDE publishes the new standard rating list on the 1st of each month.
+#
+# We run daily on the 3rd through the 9th at 09:00 UTC rather than only on the
+# 3rd. This is a SELF-HEALING catch-up window, not seven times the work: the
+# first step checks whether gm-dashboard/data.json already carries the current
+# rating period and, if so, the whole job exits immediately as a no-op. Once a
+# month succeeds, the remaining days cost a few seconds each.
+#
+# Why: on 2026-08-03 every FIDE download attempt hung, the job still reported
+# success, and the site served JUL26 ratings for the rest of the month. A
+# single scheduled attempt per month means one bad morning at FIDE costs a
+# full month of stale data. Six extra chances fixes that automatically.
 on:
   schedule:
-    - cron: "0 9 3 * *"
-  workflow_dispatch: {}
+    - cron: "0 9 3-9 * *"
+  workflow_dispatch:
+    inputs:
+      force:
+        description: "Run even if data.json already has the current rating period"
+        type: boolean
+        default: true
 
 permissions:
   contents: write
@@ -24,13 +37,36 @@ jobs:
         with:
           python-version: "3.12"
 
-      # Try up to 3 times to pull the new FIDE list. Timeouts here are
-      # transient network issues on ratings.fide.com; a quick retry usually
-      # succeeds. If all attempts fail we still fall through so downstream
-      # steps (page rebuild + Neocities deploy) can pick up any source-code
-      # changes that were pushed since the last deploy.
-      - name: Run monthly refresh script
+      # Cheap no-op gate for the catch-up window. Skips the rest of the job on
+      # days when the current month's list is already committed.
+      - name: Decide whether a refresh is needed
+        id: gate
+        run: |
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ] && [ "${{ inputs.force }}" = "true" ]; then
+            echo "Manual dispatch with force=true — running regardless of current state."
+            echo "run=true" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          CURRENT=$(python3 data/check_freshness.py --is-current)
+          if [ "$CURRENT" = "yes" ]; then
+            echo "data.json already has the current rating period — nothing to do."
+            echo "run=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "data.json is behind the current rating period — refreshing."
+            echo "run=true" >> "$GITHUB_OUTPUT"
+          fi
+
+      # Up to 3 attempts with a real backoff (2 min, not 30 s). The download
+      # itself is now bounded by curl's own --connect-timeout/--max-time and
+      # sends a browser User-Agent, so a FIDE tarpit fails fast and cleanly
+      # instead of hanging until Python kills the subprocess.
+      #
+      # Still continue-on-error: we want page rebuilds and code-only deploys to
+      # proceed. The difference from before is that staleness is now caught and
+      # reported by an explicit gate at the end of the job.
+      - name: Run refresh script
         id: refresh
+        if: steps.gate.outputs.run == 'true'
         continue-on-error: true
         run: |
           for attempt in 1 2 3; do
@@ -41,62 +77,69 @@ jobs:
               exit 0
             fi
             echo "::endgroup::"
-            echo "Attempt $attempt failed, sleeping 30s…"
-            sleep 30
+            if [ "$attempt" -lt 3 ]; then
+              echo "Attempt $attempt failed — sleeping 120s before retry…"
+              sleep 120
+            fi
           done
           echo "refresh_ok=false" >> "$GITHUB_OUTPUT"
-          echo "::warning::All 3 refresh attempts failed — will still rebuild pages + deploy from committed data.json"
+          echo "::warning::All 3 refresh attempts failed — rebuilding pages from committed data.json. The freshness gate at the end of this job will fail the run."
           exit 0
 
-      # Always rebuild pages, even if refresh failed — build_pages.py reads
-      # from the committed data.json so it produces a valid site regardless.
       - name: Rebuild per-player static pages + sitemap
+        if: steps.gate.outputs.run == 'true'
         run: python3 data/build_pages.py
 
       - name: Commit and push updated data + pages
+        if: steps.gate.outputs.run == 'true'
         run: |
           git config user.name "gm-almanac-bot"
           git config user.email "actions@users.noreply.github.com"
+
           if git diff --quiet -- gm-dashboard/data.json gm-dashboard/player gm-dashboard/sitemap.xml; then
-            echo "No changes to data.json or generated pages — FIDE list unchanged or already up to date."
+            echo "No changes to data.json or generated pages."
             exit 0
           fi
-          git add gm-dashboard/data.json gm-dashboard/player gm-dashboard/sitemap.xml data/refresh_log.json 2>/dev/null || true
-          # Handle case where refresh failed and refresh_log.json wasn't updated
-          git add gm-dashboard/data.json gm-dashboard/player gm-dashboard/sitemap.xml
-          if [ -f data/refresh_log.json ]; then
-            PERIOD=$(python3 -c "import json; print(json.load(open('data/refresh_log.json')).get('rating_period', 'unknown'))")
+
+          # Only claim a rating period when THIS run actually refreshed the
+          # data. Previously the period was read out of refresh_log.json even
+          # when the refresh had failed, so a failed August run committed the
+          # message "Monthly refresh + page rebuild: JUL26" and looked healthy.
+          if [ "${{ steps.refresh.outputs.refresh_ok }}" = "true" ]; then
+            PERIOD=$(python3 -c "import json; print(json.load(open('data/refresh_log.json')).get('rating_period','unknown'))")
+            MSG="Monthly refresh + page rebuild: ${PERIOD}"
           else
-            PERIOD="page-rebuild-only"
+            STALE=$(python3 -c "import json; print(json.load(open('gm-dashboard/data.json')).get('ratingPeriod','unknown'))")
+            MSG="Page rebuild only — FIDE refresh FAILED, data still ${STALE}"
           fi
-          git commit -m "Monthly refresh + page rebuild: ${PERIOD}"
+
+          git add gm-dashboard/data.json gm-dashboard/player gm-dashboard/sitemap.xml
+          [ -f data/refresh_log.json ] && git add data/refresh_log.json
+          git commit -m "$MSG"
           git push
 
       - name: Upload refresh log as artifact
-        if: always()
+        if: always() && steps.gate.outputs.run == 'true'
         uses: actions/upload-artifact@v4
         with:
           name: refresh-log
           path: data/refresh_log.json
           retention-days: 90
+          if-no-files-found: warn
 
-      # After the monthly refresh has committed new data + player pages,
-      # sync the gm-dashboard/ folder to Neocities so scfromor.com sees the
-      # new FIDE ratings, regenerated player pages, and sitemap without any
-      # manual upload. Uses bcomnes/deploy-to-neocities which only uploads
-      # changed files (safe for the 2,146-page directory).
-      #
-      # The Neocities API deploys to the SITE ROOT, so we stage the folder
-      # into staging/chess/grandmaster_almanac/ to match the live URL path
-      # scfromor.com/chess/grandmaster_almanac/. cleanup: false guarantees
-      # nothing outside this subpath is touched — your other subsites are
-      # never orphaned or deleted.
       - name: Re-checkout after auto-commit
+        if: steps.gate.outputs.run == 'true'
         uses: actions/checkout@v4
         with:
           ref: master
 
+      # The Neocities API deploys to the SITE ROOT, so we stage into
+      # staging/chess/grandmaster_almanac/ to match the live URL path
+      # scfromor.com/chess/grandmaster_almanac/. cleanup: false guarantees
+      # nothing outside this subpath is touched — other subsites are never
+      # orphaned or deleted.
       - name: Stage files under matching subpath
+        if: steps.gate.outputs.run == 'true'
         run: |
           mkdir -p staging/chess/grandmaster_almanac
           cp -R gm-dashboard/. staging/chess/grandmaster_almanac/
@@ -104,6 +147,7 @@ jobs:
           find staging -type f | wc -l
 
       - name: Deploy to Neocities
+        if: steps.gate.outputs.run == 'true'
         uses: bcomnes/deploy-to-neocities@v3
         with:
           api_key: ${{ secrets.NEOCITIES_API_KEY }}
@@ -111,3 +155,13 @@ jobs:
           neocities_supporter: false
           preview_before_deploy: true
           dist_dir: staging
+
+      # THE POINT OF THIS WHOLE FILE.
+      #
+      # Runs last so code-only changes still deploy, but fails the job — and
+      # therefore triggers GitHub's failure notification email — whenever the
+      # committed data is behind the current FIDE rating period. Without this,
+      # a total FIDE outage is indistinguishable from a clean run.
+      - name: Verify published data is current
+        if: always() && steps.gate.outputs.run == 'true'
+        run: python3 data/check_freshness.py --check
