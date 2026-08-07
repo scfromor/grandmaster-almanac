@@ -94,6 +94,18 @@ jobs:
           echo "::warning::All 3 refresh attempts failed — rebuilding pages from committed data.json. The freshness gate at the end of this job will fail the run."
           exit 0
 
+      # Enrichment runs regardless of whether the FIDE download succeeded:
+      #   - fills playstyle radars for any player still missing one
+      #   - applies human-approved photos from data/photo_approvals.json
+      #   - queues fresh photo candidates for review at photo-review.html
+      #   - backfills Wikipedia bios for a small monthly batch
+      # A total FIDE outage no longer stalls enrichment progress; the freshness
+      # gate at the end still fails the run on stale ratings.
+      - name: Enrich dataset (bios, photos, radars)
+        if: steps.gate.outputs.run == 'true'
+        continue-on-error: true
+        run: python3 data/enrich_dataset.py
+
       - name: Rebuild per-player static pages + sitemap
         if: steps.gate.outputs.run == 'true'
         run: python3 data/build_pages.py
@@ -104,8 +116,8 @@ jobs:
           git config user.name "gm-almanac-bot"
           git config user.email "actions@users.noreply.github.com"
 
-          if git diff --quiet -- gm-dashboard/data.json gm-dashboard/player gm-dashboard/sitemap.xml; then
-            echo "No changes to data.json or generated pages."
+          if git diff --quiet -- gm-dashboard/data.json gm-dashboard/player gm-dashboard/sitemap.xml data/photo_candidates.json 2>/dev/null; then
+            echo "No changes to data.json, generated pages, or photo candidates."
             exit 0
           fi
 
@@ -123,6 +135,9 @@ jobs:
 
           git add gm-dashboard/data.json gm-dashboard/player gm-dashboard/sitemap.xml
           [ -f data/refresh_log.json ] && git add data/refresh_log.json
+          # Also commit any enrichment side-effects (candidate queue moves,
+          # approvals applied) so review state persists across runs.
+          [ -f data/photo_candidates.json ] && git add data/photo_candidates.json
           git commit -m "$MSG"
           git push
 
