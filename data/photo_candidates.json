@@ -1,5 +1,20 @@
 {
-  "generated_at_utc": "2026-08-08T09:49:21.903030+00:00",
-  "count": 0,
-  "candidates": []
+  "generated_at_utc": "2026-08-09T09:50:58.154751+00:00",
+  "count": 1,
+  "candidates": [
+    {
+      "id": "13715658",
+      "name": "Ansat, Aldiyar",
+      "fed": "KAZ",
+      "fedName": "Kazakhstan",
+      "rating": 2500,
+      "bday": 2008,
+      "photo": "https://upload.wikimedia.org/wikipedia/commons/7/78/20250213_3rd_Al-Beruniy_Tashkent_2026_Futures_Ansat_Aldiyar_%28cropped%29.jpg",
+      "photoThumbnail": "https://upload.wikimedia.org/wikipedia/commons/thumb/7/78/20250213_3rd_Al-Beruniy_Tashkent_2026_Futures_Ansat_Aldiyar_%28cropped%29.jpg/330px-20250213_3rd_Al-Beruniy_Tashkent_2026_Futures_Ansat_Aldiyar_%28cropped%29.jpg",
+      "photoSource": "https://en.wikipedia.org/wiki/Aldiyar_Ansat",
+      "wikipedia_title": "Aldiyar Ansat",
+      "wikipedia_description": "Kazakhstani chess grandmaster (born 2008)",
+      "added_at_utc": "2026-08-09T09:50:04.400072+00:00"
+    }
+  ]
 }
