@@ -36,6 +36,7 @@ from datetime import datetime, timezone
 
 # Local enrichment modules (in the same data/ directory as this script).
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+import fide_source  # noqa: E402
 from style_model import compute_style  # noqa: E402
 from wiki_enrichment import enrich_from_wikipedia, find_wikipedia_summary  # noqa: E402
 
@@ -325,65 +326,33 @@ def download_fide_list():
     GitHub Actions runners are affected, so the scheduled refresh cannot always
     reach the official host.
 
-    GM_FIDE_LIST_URL is the escape hatch: point it at any URL serving the same
-    standard_rating_list zip (a copy you uploaded from a residential
-    connection, a proxy, or a mirror) and we fetch from there instead. The
-    parsing path is unchanged, so the resulting data.json is byte-identical to
-    what the official download would have produced.
-    """
-    override_url = (os.environ.get("GM_FIDE_LIST_URL") or "").strip()
-    source_url = override_url or FIDE_ZIP_URL
-    if override_url:
-        log(f"Using GM_FIDE_LIST_URL override: {source_url}")
-    else:
-        log("Downloading latest FIDE standard rating list...")
+    Source selection is delegated to fide_source.resolve(), which tries the
+    GM_FIDE_LIST_URL override, then the official host, then the Internet
+    Archive (existing snapshot, then Save Page Now). The Archive's crawler is
+    not subject to FIDE's block and web.archive.org is reachable from CI, so
+    the monthly refresh no longer needs a human to mirror the file by hand.
 
+    The parsing path below is unchanged regardless of which source won, so
+    the resulting data.json is identical to what the official download would
+    have produced.
+    """
     for stale in (FIDE_ZIP_PATH, FIDE_TXT_PATH):
         if os.path.exists(stale):
             os.remove(stale)
 
-    result = subprocess.run(
-        [
-            "curl", "-sL", "-o", FIDE_ZIP_PATH, source_url,
-            "-A", FIDE_UA,
-            "-H", "Accept: application/zip,application/octet-stream,*/*",
-            "-H", "Referer: https://ratings.fide.com/download_lists.phtml",
-            "--connect-timeout", "30",
-            "--max-time", "300",
-            "--retry", "2",
-            "--retry-delay", "10",
-            "--retry-all-errors",
-            "-w", "%{http_code}",
-        ],
-        capture_output=True, text=True, timeout=360,
-    )
-    http_code = result.stdout.strip()
-    if http_code != "200" or not os.path.exists(FIDE_ZIP_PATH):
-        hint = ""
-        # curl 28 = timeout, 35 = TLS connect error. Against ratings.fide.com
-        # from a datacenter IP these mean the firewall dropped us, not that
-        # anything is wrong with the request itself.
-        if not override_url and result.returncode in (7, 28, 35, 56):
-            hint = (
-                " — this is the ratings.fide.com datacenter-IP block, not a bad request. "
-                "Re-run the workflow with the list_url input set to a reachable copy "
-                "of standard_rating_list.zip to refresh from an alternate source."
-            )
-        raise RuntimeError(
-            f"Download failed from {source_url} "
-            f"(HTTP {http_code!r}, curl exit {result.returncode}){hint}"
-        )
+    # fide_source walks an ordered chain of sources -- operator override,
+    # the official host, an existing Wayback snapshot, then Save Page Now --
+    # and validates the ZIP magic, size and members before returning. It
+    # raises RuntimeError with a per-source breakdown if all of them fail.
+    source, source_url = fide_source.resolve(FIDE_ZIP_PATH)
+    log(f"Rating list obtained via {source}: {source_url}")
 
-    # A tarpit/error page can still be written to disk with a 200. Verify we
-    # actually received a zip archive of plausible size before trusting it --
-    # the STANDARD txt zip is ~12 MB, so anything under 1 MB is not the list.
+    # Record provenance so the commit message and refresh log can say where
+    # the month's data actually came from rather than implying it was FIDE.
+    os.environ["GM_FIDE_RESOLVED_SOURCE"] = source
+    os.environ["GM_FIDE_RESOLVED_URL"] = source_url
+
     size = os.path.getsize(FIDE_ZIP_PATH)
-    if size < 1_000_000:
-        raise RuntimeError(f"FIDE download too small to be the rating list ({size} bytes)")
-    with open(FIDE_ZIP_PATH, "rb") as fh:
-        if fh.read(2) != b"PK":
-            raise RuntimeError("FIDE download is not a zip archive (got an error page?)")
-
     log(f"Downloaded {size / 1_048_576:.2f} MB, unzipping...")
     subprocess.run(["unzip", "-o", FIDE_ZIP_PATH, "-d", DATA_DIR],
                     capture_output=True, text=True, check=True)
