@@ -1,26 +1,19 @@
 {
   "status": "ok",
-  "rating_period": "JUL26",
+  "rating_period": "AUG26",
   "total_players_published": 2147,
-  "active_gm_count": 1318,
+  "active_gm_count": 1312,
   "diff": {
-    "new_gms_count": 1,
+    "new_gms_count": 0,
     "transfers_count": 1,
     "deaths_count": 1,
-    "new_gms": [
-      {
-        "id": "8632200",
-        "name": "Kong, Xiangrui",
-        "fed": "CHN",
-        "rating": 2538
-      }
-    ],
+    "new_gms": [],
     "transfers": [
       {
         "id": "4168119",
         "name": "Nepomniachtchi, Ian",
-        "from": "RUS",
-        "to": "FID"
+        "from": "FID",
+        "to": "RUS"
       }
     ],
     "deaths": [
@@ -32,7 +25,10 @@
         "note": "newly absent from FIDE list this period — unconfirmed, needs manual verification"
       }
     ],
-    "dropped_from_list_count": 255
+    "dropped_from_list_count": 255,
+    "photos_applied_from_approvals": 0,
+    "photo_candidates_total": 2,
+    "bio_backfill_attempted": 50
   },
   "top5": [
     {
@@ -57,5 +53,5 @@
     }
   ],
   "errors": [],
-  "run_at_utc": "2026-07-27T06:50:44.577545+00:00"
+  "run_at_utc": "2026-08-10T22:36:37.291350+00:00"
 }

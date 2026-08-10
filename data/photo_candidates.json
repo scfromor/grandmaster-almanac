@@ -1,6 +1,6 @@
 {
-  "generated_at_utc": "2026-08-10T22:26:19.406850+00:00",
-  "count": 1,
+  "generated_at_utc": "2026-08-10T22:37:42.065071+00:00",
+  "count": 3,
   "candidates": [
     {
       "id": "13715658",
@@ -15,6 +15,34 @@
       "wikipedia_title": "Aldiyar Ansat",
       "wikipedia_description": "Kazakhstani chess grandmaster (born 2008)",
       "added_at_utc": "2026-08-09T09:50:04.400072+00:00"
+    },
+    {
+      "id": "4145097",
+      "name": "Zakhartsov, Vladimir",
+      "fed": "RUS",
+      "fedName": "Russia",
+      "rating": 2459,
+      "bday": 1997,
+      "photo": "https://upload.wikimedia.org/wikipedia/commons/4/4c/Viacheslav_Zakhartsov_2009.jpg?utm_source=en.wikipedia.org&utm_campaign=api&utm_content=thumbnail_unscaled",
+      "photoThumbnail": "https://upload.wikimedia.org/wikipedia/commons/thumb/4/4c/Viacheslav_Zakhartsov_2009.jpg/330px-Viacheslav_Zakhartsov_2009.jpg?utm_source=en.wikipedia.org&utm_campaign=api&utm_content=thumbnail",
+      "photoSource": "https://en.wikipedia.org/wiki/Viacheslav_Zakhartsov",
+      "wikipedia_title": "Viacheslav Zakhartsov",
+      "wikipedia_description": "Russian chess grandmaster (born 1968)",
+      "added_at_utc": "2026-08-10T22:34:07.205546+00:00"
+    },
+    {
+      "id": "3502783",
+      "name": "Cabrera, Alexis",
+      "fed": "ESP",
+      "fedName": "Spain",
+      "rating": 2404,
+      "bday": 1976,
+      "photo": "https://upload.wikimedia.org/wikipedia/commons/2/2f/Alexis_Cabrera_%28ESP%29.jpg?utm_source=en.wikipedia.org&utm_campaign=api&utm_content=thumbnail_unscaled",
+      "photoThumbnail": "https://upload.wikimedia.org/wikipedia/commons/thumb/2/2f/Alexis_Cabrera_%28ESP%29.jpg/330px-Alexis_Cabrera_%28ESP%29.jpg?utm_source=en.wikipedia.org&utm_campaign=api&utm_content=thumbnail",
+      "photoSource": "https://en.wikipedia.org/wiki/Alexis_Cabrera_(chess_player)",
+      "wikipedia_title": "Alexis Cabrera (chess player)",
+      "wikipedia_description": "Cuban-Spanish chess grandmaster (born 1976)",
+      "added_at_utc": "2026-08-10T22:37:05.219179+00:00"
     }
   ]
 }
