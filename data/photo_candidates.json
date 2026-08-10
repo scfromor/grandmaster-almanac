@@ -1,6 +1,6 @@
 {
-  "generated_at_utc": "2026-08-10T22:37:42.065071+00:00",
-  "count": 3,
+  "generated_at_utc": "2026-08-10T23:04:29.660966+00:00",
+  "count": 4,
   "candidates": [
     {
       "id": "13715658",
@@ -43,6 +43,20 @@
       "wikipedia_title": "Alexis Cabrera (chess player)",
       "wikipedia_description": "Cuban-Spanish chess grandmaster (born 1976)",
       "added_at_utc": "2026-08-10T22:37:05.219179+00:00"
+    },
+    {
+      "id": "4601556",
+      "name": "Heinemann, Thies",
+      "fed": "GER",
+      "fedName": "Germany",
+      "rating": 2393,
+      "bday": 1971,
+      "photo": "https://upload.wikimedia.org/wikipedia/commons/e/ed/ThiesHeinemann.jpg?utm_source=en.wikipedia.org&utm_campaign=api&utm_content=thumbnail_unscaled",
+      "photoThumbnail": "https://upload.wikimedia.org/wikipedia/commons/thumb/e/ed/ThiesHeinemann.jpg/330px-ThiesHeinemann.jpg?utm_source=en.wikipedia.org&utm_campaign=api&utm_content=thumbnail",
+      "photoSource": "https://en.wikipedia.org/wiki/Thies_Heinemann",
+      "wikipedia_title": "Thies Heinemann",
+      "wikipedia_description": "German chess grandmaster (born 1971)",
+      "added_at_utc": "2026-08-10T23:01:21.262975+00:00"
     }
   ]
 }

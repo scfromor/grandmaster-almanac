@@ -5,17 +5,10 @@
   "active_gm_count": 1312,
   "diff": {
     "new_gms_count": 0,
-    "transfers_count": 1,
+    "transfers_count": 0,
     "deaths_count": 1,
     "new_gms": [],
-    "transfers": [
-      {
-        "id": "4168119",
-        "name": "Nepomniachtchi, Ian",
-        "from": "FID",
-        "to": "RUS"
-      }
-    ],
+    "transfers": [],
     "deaths": [
       {
         "id": "4500059",
@@ -27,7 +20,7 @@
     ],
     "dropped_from_list_count": 255,
     "photos_applied_from_approvals": 0,
-    "photo_candidates_total": 2,
+    "photo_candidates_total": 4,
     "bio_backfill_attempted": 50
   },
   "top5": [
@@ -53,5 +46,5 @@
     }
   ],
   "errors": [],
-  "run_at_utc": "2026-08-10T22:36:37.291350+00:00"
+  "run_at_utc": "2026-08-10T23:03:29.292654+00:00"
 }
