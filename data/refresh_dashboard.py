@@ -52,6 +52,10 @@ DASHBOARD_JSON = os.path.join(DASHBOARD_DIR, "data.json")
 PREV_SNAPSHOT = os.path.join(DATA_DIR, "prev_data.json")
 REFRESH_LOG = os.path.join(DATA_DIR, "refresh_log.json")
 
+# Legacy endpoint, kept only for reference. It no longer serves the list --
+# requests to it hang or reset, which is what made the failure look like a
+# pure IP block for weeks. fide_source.py builds the real per-month URL
+# (e.g. .../download/standard_aug26frl.zip) instead.
 FIDE_ZIP_URL = "https://ratings.fide.com/download/standard_rating_list.zip"
 FIDE_ZIP_PATH = os.path.join(DATA_DIR, "standard_rating_list.zip")
 FIDE_TXT_PATH = os.path.join(DATA_DIR, "standard_rating_list.txt")
@@ -358,13 +362,40 @@ def download_fide_list():
                     capture_output=True, text=True, check=True)
 
     if not os.path.exists(FIDE_TXT_PATH):
-        # FIDE occasionally renames the inner file; find any .txt that was just extracted
+        # The member name varies by month and does NOT always contain the
+        # word "rating": the real August 2026 archive ships a single member
+        # called standard_aug26frl.txt. An earlier version of this code
+        # required "rating" in the filename and therefore threw
+        # "Could not locate extracted FIDE rating list .txt file" on a
+        # download that had in fact succeeded.
+        #
+        # Take the largest .txt in DATA_DIR instead. The rating list is ~100 MB
+        # uncompressed, so size unambiguously identifies it against any
+        # README or notes file that might also be present.
+        candidates = []
         for fname in os.listdir(DATA_DIR):
-            if fname.lower().endswith(".txt") and "rating" in fname.lower():
-                shutil.move(os.path.join(DATA_DIR, fname), FIDE_TXT_PATH)
-                break
+            if not fname.lower().endswith(".txt"):
+                continue
+            fpath = os.path.join(DATA_DIR, fname)
+            if not os.path.isfile(fpath):
+                continue
+            candidates.append((os.path.getsize(fpath), fname))
+        if candidates:
+            candidates.sort(reverse=True)
+            biggest_size, biggest = candidates[0]
+            log(f"Extracted member {biggest} ({biggest_size / 1_048_576:.1f} MB)"
+                f" -> {os.path.basename(FIDE_TXT_PATH)}")
+            shutil.move(os.path.join(DATA_DIR, biggest), FIDE_TXT_PATH)
+
     if not os.path.exists(FIDE_TXT_PATH):
-        raise RuntimeError("Could not locate extracted FIDE rating list .txt file")
+        try:
+            listing = sorted(os.listdir(DATA_DIR))
+        except OSError:
+            listing = []
+        raise RuntimeError(
+            "Could not locate extracted FIDE rating list .txt file. "
+            f"DATA_DIR contains: {listing}"
+        )
 
     log(f"Downloaded and extracted: {FIDE_TXT_PATH}")
 

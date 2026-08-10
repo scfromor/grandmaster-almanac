@@ -61,14 +61,15 @@ jobs:
             echo "run=true" >> "$GITHUB_OUTPUT"
           fi
 
-      # Up to 3 attempts with a real backoff (2 min, not 30 s). The download
-      # itself is now bounded by curl's own --connect-timeout/--max-time and
-      # sends a browser User-Agent, so a FIDE tarpit fails fast and cleanly
-      # instead of hanging until Python kills the subprocess.
+      # Two attempts, 90 s apart. data/fide_source.py already walks its own
+      # source chain (override -> official host -> Wayback snapshot -> Save
+      # Page Now) with exponential backoff on the Archive, so the old 3x outer
+      # loop mostly just multiplied the wait on a genuine outage. One retry is
+      # enough to ride out a transient blip.
       #
       # Still continue-on-error: we want page rebuilds and code-only deploys to
-      # proceed. The difference from before is that staleness is now caught and
-      # reported by an explicit gate at the end of the job.
+      # proceed. Staleness is caught and reported by the explicit gate at the
+      # end of the job.
       - name: Run refresh script
         id: refresh
         if: steps.gate.outputs.run == 'true'
@@ -77,7 +78,7 @@ jobs:
           # Empty on scheduled runs, so the official FIDE URL is used as normal.
           GM_FIDE_LIST_URL: ${{ inputs.list_url }}
         run: |
-          for attempt in 1 2 3; do
+          for attempt in 1 2; do
             echo "::group::Refresh attempt $attempt"
             if python3 data/refresh_dashboard.py; then
               echo "::endgroup::"
@@ -85,13 +86,13 @@ jobs:
               exit 0
             fi
             echo "::endgroup::"
-            if [ "$attempt" -lt 3 ]; then
-              echo "Attempt $attempt failed — sleeping 120s before retry…"
-              sleep 120
+            if [ "$attempt" -lt 2 ]; then
+              echo "Attempt $attempt failed — sleeping 90s before retry…"
+              sleep 90
             fi
           done
           echo "refresh_ok=false" >> "$GITHUB_OUTPUT"
-          echo "::warning::All 3 refresh attempts failed — rebuilding pages from committed data.json. The freshness gate at the end of this job will fail the run."
+          echo "::warning::Both refresh attempts failed — rebuilding pages from committed data.json. The freshness gate at the end of this job will fail the run."
           exit 0
 
       # Enrichment runs regardless of whether the FIDE download succeeded:
