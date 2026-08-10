@@ -89,14 +89,29 @@
   const REMOTE_DATA_URL = 'https://cdn.jsdelivr.net/gh/scfromor/grandmaster-almanac@master/gm-dashboard/data.json';
   const LOCAL_DATA_URL = 'data.json';
 
-  fetch(REMOTE_DATA_URL)
+  // Cache-buster: the browser and jsDelivr both cache data.json for hours,
+  // which means visitors keep seeing last month's ratings for a long time
+  // after a successful monthly refresh (root cause of the AUG26 "still shows
+  // JUL26" reports). Rounding the current UTC time to the current hour keeps
+  // the URL stable within an hour (so most navigations reuse cache) while
+  // guaranteeing a fresh fetch shortly after each monthly deploy.
+  const CACHE_TAG = (function () {
+    const d = new Date();
+    return d.getUTCFullYear().toString()
+      + String(d.getUTCMonth() + 1).padStart(2, '0')
+      + String(d.getUTCDate()).padStart(2, '0')
+      + String(d.getUTCHours()).padStart(2, '0');
+  })();
+  const withTag = (url) => url + (url.includes('?') ? '&' : '?') + 'v=' + CACHE_TAG;
+
+  fetch(withTag(REMOTE_DATA_URL))
     .then((r) => {
       if (!r.ok) throw new Error(`CDN responded ${r.status}`);
       return r.json();
     })
     .catch((err) => {
       console.warn('Falling back to local data.json:', err.message);
-      return fetch(LOCAL_DATA_URL).then((r) => r.json());
+      return fetch(withTag(LOCAL_DATA_URL)).then((r) => r.json());
     })
     .then((d) => {
       state.raw = d;
