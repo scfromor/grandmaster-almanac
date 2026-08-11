@@ -104,14 +104,19 @@
   })();
   const withTag = (url) => url + (url.includes('?') ? '&' : '?') + 'v=' + CACHE_TAG;
 
-  fetch(withTag(REMOTE_DATA_URL))
+  // Primary is same-origin Neocities data.json. We used to hit jsDelivr
+  // first, but jsDelivr caches @master responses for up to 12 hours -- so
+  // after a successful monthly refresh visitors kept seeing last month's
+  // data even though Neocities was serving the new file. Root cause of
+  // the AUG26 'still shows JUL26' report on 2026-08-10.
+  fetch(withTag(LOCAL_DATA_URL))
     .then((r) => {
-      if (!r.ok) throw new Error(`CDN responded ${r.status}`);
+      if (!r.ok) throw new Error(`Neocities responded ${r.status}`);
       return r.json();
     })
     .catch((err) => {
-      console.warn('Falling back to local data.json:', err.message);
-      return fetch(withTag(LOCAL_DATA_URL)).then((r) => r.json());
+      console.warn('Falling back to jsDelivr copy of data.json:', err.message);
+      return fetch(withTag(REMOTE_DATA_URL)).then((r) => r.json());
     })
     .then((d) => {
       state.raw = d;
