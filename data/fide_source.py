@@ -307,20 +307,40 @@ def resolve(dest: str) -> tuple[str, str]:
                 log("  datacenter-IP block signature; skipping remaining months")
                 break
 
-    # 3. Existing Archive snapshots, newest month first.
-    for when in months:
-        url = official_url(when)
-        log(f"Wayback snapshot for {month_code(when)}")
-        if try_wayback(url, dest):
-            return "wayback", url
-        attempts.append(f"wayback {month_code(when)} -> no usable snapshot")
+    # 3. Existing Archive snapshot for THIS MONTH ONLY.
+    #
+    # It's tempting to fall back to older months' snapshots here, but that
+    # was a real bug in September 2026: FIDE published SEP26 with no Wayback
+    # snapshot yet, we happily used AUG26's snapshot, and the pipeline
+    # "succeeded" while quietly serving stale data. Older snapshots are
+    # only useful as a last-ditch fallback after Save Page Now also fails,
+    # so they're moved to step 5 below.
+    newest = months[0]
+    newest_url = official_url(newest)
+    log(f"Wayback snapshot for {month_code(newest)}")
+    if try_wayback(newest_url, dest):
+        return "wayback", newest_url
+    attempts.append(f"wayback {month_code(newest)} -> no usable snapshot")
 
     # 4. Ask the Archive to fetch this month's file on our behalf.
-    newest = official_url(months[0])
-    log(f"Save Page Now for {month_code(months[0])}")
-    if try_save_page_now(newest, dest):
-        return "wayback-spn", newest
-    attempts.append(f"spn {month_code(months[0])} -> failed")
+    log(f"Save Page Now for {month_code(newest)}")
+    if try_save_page_now(newest_url, dest):
+        return "wayback-spn", newest_url
+    attempts.append(f"spn {month_code(newest)} -> failed")
+
+    # 5. Last-ditch: an older month's snapshot. This is intentionally
+    # AFTER SPN so we never publish stale data when a fresh copy could
+    # have been retrieved. If we land here the freshness gate in the
+    # workflow will still catch it and fail the run, but at least the
+    # refresh_log records what we tried.
+    for when in months[1:]:
+        url = official_url(when)
+        log(f"Wayback snapshot for {month_code(when)} (last-ditch, older month)")
+        if try_wayback(url, dest):
+            log(f"  WARNING: using older snapshot {month_code(when)} — "
+                f"freshness gate will reject this as stale")
+            return "wayback-old", url
+        attempts.append(f"wayback {month_code(when)} -> no usable snapshot")
 
     raise RuntimeError(
         "Could not obtain a valid FIDE rating list from any source.\n  "
