@@ -82,13 +82,25 @@ jobs:
             git push
           fi
 
+      # The Neocities API always deploys to the SITE ROOT -- there is no
+      # target-directory option. To land the files at
+      # scfromor.com/chess/grandmaster_almanac/ we mirror that path locally
+      # and upload the staging root. cleanup: false guarantees the other
+      # subsites under scfromor.com are never touched or orphaned.
+      - name: Stage files under matching subpath
+        run: |
+          mkdir -p staging/chess/grandmaster_almanac
+          cp -R gm-dashboard/. staging/chess/grandmaster_almanac/
+          echo "Staged file count: $(find staging -type f | wc -l)"
+
       - name: Deploy to Neocities
         uses: bcomnes/deploy-to-neocities@v3
         with:
-          api_token: ${{ secrets.NEOCITIES_API_TOKEN }}
-          dist_dir: gm-dashboard
-          target_dir: staging/chess/grandmaster_almanac
+          api_key: ${{ secrets.NEOCITIES_API_KEY }}
+          dist_dir: staging
           cleanup: false
+          neocities_supporter: false
+          preview_before_deploy: true
 
       - name: Verify the deployed site matches the build
         run: |
