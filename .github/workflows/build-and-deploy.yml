@@ -1,0 +1,105 @@
+name: Build and deploy site
+
+# The site is now built from data/roster.csv, which is maintained by hand.
+# Nothing in this workflow touches the network for data. Edit roster.csv on
+# GitHub, commit, and this runs: validate -> build -> deploy.
+#
+# Replaces the old monthly-refresh.yml, which downloaded FIDE's rating list.
+# FIDE blocks datacenter IPs, GitHub Actions runs on datacenter IPs, and the
+# workarounds were unreliable enough to publish stale data twice.
+
+on:
+  push:
+    branches: [master]
+    # data.json is deliberately NOT listed: this workflow commits it, and
+    # listing it here would make the workflow retrigger itself forever.
+    paths:
+      - "data/roster.csv"
+      - "data/fed_names.json"
+      - "data/roster_io.py"
+      - "data/build_from_csv.py"
+      - "data/build_pages.py"
+      - "data/validate_roster.py"
+      - "gm-dashboard/app.js"
+      - "gm-dashboard/player.js"
+      - "gm-dashboard/index.html"
+      - "gm-dashboard/style.css"
+      - ".github/workflows/build-and-deploy.yml"
+  workflow_dispatch:
+    inputs:
+      allow_shrink:
+        description: "Allow the roster to shrink by more than 25 players (use when deliberately removing many entries)"
+        type: boolean
+        default: false
+
+concurrency:
+  # If you commit twice quickly, only the newest build should reach Neocities.
+  group: build-and-deploy
+  cancel-in-progress: true
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      # Validation runs BEFORE anything is built or deployed. A typo in
+      # roster.csv fails here with a row number and stops the run, so a bad
+      # hand-edit can never reach the live site.
+      - name: Validate roster.csv
+        run: |
+          if [ "${{ inputs.allow_shrink }}" = "true" ]; then
+            python3 data/validate_roster.py --allow-shrink
+          else
+            python3 data/validate_roster.py
+          fi
+
+      - name: Build data.json from roster.csv
+        run: python3 data/build_from_csv.py
+
+      - name: Build static pages
+        run: python3 data/build_pages.py
+
+      - name: Commit rebuilt data.json and pages
+        run: |
+          git config user.name  "gm-almanac-bot"
+          git config user.email "actions@users.noreply.github.com"
+          git add gm-dashboard/data.json gm-dashboard/player gm-dashboard/sitemap.xml 2>/dev/null || true
+          if git diff --cached --quiet; then
+            echo "No build output changed."
+          else
+            # [skip ci] is belt-and-braces: the path filter above already
+            # excludes data.json, but an explicit skip marker means a future
+            # change to that filter can't accidentally create a build loop.
+            git commit -m "Rebuild site from roster.csv [skip ci]"
+            git push
+          fi
+
+      - name: Deploy to Neocities
+        uses: bcomnes/deploy-to-neocities@v3
+        with:
+          api_token: ${{ secrets.NEOCITIES_API_TOKEN }}
+          dist_dir: gm-dashboard
+          target_dir: staging/chess/grandmaster_almanac
+          cleanup: false
+
+      - name: Verify the deployed site matches the build
+        run: |
+          sleep 10
+          BUILT=$(python3 -c "import json;print(json.load(open('gm-dashboard/data.json'))['playerCount'])")
+          LIVE=$(curl -sS --max-time 30 \
+            "https://scfromor.com/chess/grandmaster_almanac/data.json?cb=$(date +%s)" \
+            | python3 -c "import json,sys;print(json.load(sys.stdin)['playerCount'])")
+          echo "built playerCount=$BUILT  live playerCount=$LIVE"
+          if [ "$BUILT" != "$LIVE" ]; then
+            echo "::error::Deploy verification failed — the live site reports $LIVE players but this build produced $BUILT. The upload may not have completed."
+            exit 1
+          fi
+          echo "Deploy verified."

@@ -4,11 +4,11 @@
   const state = {
     raw: null,
     filtered: [],
-    sort: { key: 'rating', dir: 'desc' },
+    // Ratings were removed from this site; default ordering is name A-Z.
+    sort: { key: 'name', dir: 'asc' },
     page: 1,
     pageSize: 50,
     activeId: null,
-    eloChart: null,
     radarChart: null,
   };
 
@@ -82,19 +82,18 @@
 
   // ===== Load data =====
   // Fetch the live dataset from GitHub via the jsDelivr CDN so the site always
-  // reflects the latest monthly FIDE refresh (auto-committed by the repo's
-  // GitHub Action) without needing to redeploy this static site each month.
+  // reflects the latest roster.csv rebuild (auto-committed by the repo's
+  // GitHub Action) without needing to redeploy this static site.
   // `@master` on jsDelivr is cached ~12h and purges automatically on new commits;
   // falls back to the bundled local data.json if the CDN is unreachable.
   const REMOTE_DATA_URL = 'https://cdn.jsdelivr.net/gh/scfromor/grandmaster-almanac@master/gm-dashboard/data.json';
   const LOCAL_DATA_URL = 'data.json';
 
   // Cache-buster: the browser and jsDelivr both cache data.json for hours,
-  // which means visitors keep seeing last month's ratings for a long time
-  // after a successful monthly refresh (root cause of the AUG26 "still shows
-  // JUL26" reports). Rounding the current UTC time to the current hour keeps
-  // the URL stable within an hour (so most navigations reuse cache) while
-  // guaranteeing a fresh fetch shortly after each monthly deploy.
+  // which means visitors keep seeing a stale roster for a long time after a
+  // rebuild. Rounding the current UTC time to the current hour keeps the URL
+  // stable within an hour (so most navigations reuse cache) while guaranteeing
+  // a fresh fetch shortly after each deploy.
   const CACHE_TAG = (function () {
     const d = new Date();
     return d.getUTCFullYear().toString()
@@ -106,9 +105,8 @@
 
   // Primary is same-origin Neocities data.json. We used to hit jsDelivr
   // first, but jsDelivr caches @master responses for up to 12 hours -- so
-  // after a successful monthly refresh visitors kept seeing last month's
-  // data even though Neocities was serving the new file. Root cause of
-  // the AUG26 'still shows JUL26' report on 2026-08-10.
+  // after a successful rebuild visitors kept seeing the old data even though
+  // Neocities was serving the new file.
   fetch(withTag(LOCAL_DATA_URL))
     .then((r) => {
       if (!r.ok) throw new Error(`Neocities responded ${r.status}`);
@@ -123,12 +121,11 @@
       init();
     })
     .catch((err) => {
-      document.querySelector('#tbody').innerHTML = `<tr><td colspan="8" class="empty">Failed to load data: ${err.message}</td></tr>`;
+      document.querySelector('#tbody').innerHTML = `<tr><td colspan="6" class="empty">Failed to load data: ${err.message}</td></tr>`;
     });
 
   // ===== Initialize =====
   function init() {
-    document.getElementById('ratingPeriod').textContent = formatRatingPeriod(state.raw.ratingPeriod);
     document.getElementById('totalCount').textContent = state.raw.players.length.toLocaleString();
     buildFedSelects();
     bindFilters();
@@ -140,13 +137,13 @@
     syncFromHash();
   }
 
-  function formatRatingPeriod(p) {
-    // e.g. "JUN26" -> "June 2026"
-    if (!p) return '';
-    const months = { JAN:'January',FEB:'February',MAR:'March',APR:'April',MAY:'May',JUN:'June',JUL:'July',AUG:'August',SEP:'September',OCT:'October',NOV:'November',DEC:'December' };
-    const m = months[p.slice(0,3)];
-    const y = '20' + p.slice(3);
-    return m ? `${m} ${y}` : p;
+  // Helper: a player may ship with an EMPTY style object (style axes are static
+  // data now, and are left blank for players added after the ratings removal).
+  function hasStyle(p) {
+    const s = p && p.style;
+    if (!s) return false;
+    return ['aggressive','positional','tactical','endgame','opening','defense']
+      .some((k) => typeof s[k] === 'number');
   }
 
   // ===== Populate selects =====
@@ -166,7 +163,7 @@
   }
 
   // ===== Filtering =====
-  const filterEls = ['search','curMin','curMax','peakMin','peakMax','byMin','byMax','birthCountry','currentFed','prevFed','gender','status'];
+  const filterEls = ['search','byMin','byMax','birthCountry','currentFed','prevFed','gender','status'];
   function bindFilters() {
     filterEls.forEach((id) => {
       const el = document.getElementById(id);
@@ -175,11 +172,10 @@
     });
     document.getElementById('reset').addEventListener('click', () => {
       // Reset each filter to its initial default value (matches the HTML source),
-      // not blank. Blanking the Status select flips the view from "Active (rated)"
-      // (~1,317 GMs) to "All players" (2,146), which is not what "Reset" should do.
+      // not blank. The Status select defaults to "Living" rather than "All".
       filterEls.forEach((id) => {
         const el = document.getElementById(id);
-        el.value = id === 'status' ? 'active' : '';
+        el.value = id === 'status' ? 'living' : '';
       });
       state.page = 1;
       applyFilters();
@@ -197,8 +193,6 @@
 
   function applyFilters() {
     const q = document.getElementById('search').value.trim().toLowerCase();
-    const curMin = num('curMin'); const curMax = num('curMax');
-    const peakMin = num('peakMin'); const peakMax = num('peakMax');
     const byMin = num('byMin'); const byMax = num('byMax');
     const birth = document.getElementById('birthCountry').value;
     const curFed = document.getElementById('currentFed').value;
@@ -211,24 +205,18 @@
         const hay = `${p.name} ${p.fed} ${p.fedName} ${p.birthCountry} ${p.birthCountryName} ${p.prevFed}`.toLowerCase();
         if (!hay.includes(q)) return false;
       }
-      if (curMin != null && (p.rating == null || p.rating < curMin)) return false;
-      if (curMax != null && (p.rating == null || p.rating > curMax)) return false;
-      if (peakMin != null && p.peak < peakMin) return false;
-      if (peakMax != null && p.peak > peakMax) return false;
       if (byMin != null && (p.bday == null || p.bday < byMin)) return false;
       if (byMax != null && (p.bday == null || p.bday > byMax)) return false;
       if (birth && p.birthCountry !== birth) return false;
       if (curFed && p.fed !== curFed) return false;
       if (prevFed && p.prevFed !== prevFed) return false;
       if (gender && p.sex !== gender) return false;
-      // Status filter: 'active' = currently rated & active; 'inactive' = living but inactive on FIDE list;
-      // 'deceased' = deceased; 'living' = anyone not deceased; 'revoked' = FIDE stripped the GM title.
-      // Revoked players are excluded from 'active' / 'living' / 'inactive' by default so they don't
-      // pollute normal browsing — the dedicated 'revoked' filter surfaces them.
-      if (status === 'active' && (!p.active || p.deceased || p.revoked)) return false;
-      if (status === 'inactive' && (p.active || p.deceased || p.revoked)) return false;
-      if (status === 'deceased' && !p.deceased) return false;
+      // Status filter, driven purely by the `deceased` / `revoked` facts in the
+      // roster ('' = all). The old rating-derived options ("Active (rated)" /
+      // "Inactive") are gone. Revoked players are excluded from 'living' so they
+      // don't pollute normal browsing — the dedicated 'revoked' option surfaces them.
       if (status === 'living' && (p.deceased || p.revoked)) return false;
+      if (status === 'deceased' && !p.deceased) return false;
       if (status === 'revoked' && !p.revoked) return false;
       return true;
     });
@@ -254,7 +242,7 @@
           state.sort.dir = state.sort.dir === 'asc' ? 'desc' : 'asc';
         } else {
           state.sort.key = k;
-          state.sort.dir = ['rating', 'peak'].includes(k) ? 'desc' : 'asc';
+          state.sort.dir = 'asc';
         }
         sortFiltered();
         render();
@@ -319,7 +307,7 @@
     });
 
     if (total === 0) {
-      tbody.innerHTML = `<tr><td colspan="8" class="empty">No grandmasters match these filters.<br><small>Try clearing or widening a filter.</small></td></tr>`;
+      tbody.innerHTML = `<tr><td colspan="6" class="empty">No grandmasters match these filters.<br><small>Try clearing or widening a filter.</small></td></tr>`;
       document.getElementById('pagInfo').textContent = '';
       document.getElementById('firstPage').disabled = true;
       document.getElementById('prevPage').disabled = true;
@@ -338,7 +326,6 @@
       .map((p, i) => {
         const rank = start + i + 1;
         const initials = getInitials(p.name);
-        const isTop = p.rating >= 2700;
         let statusCls, statusLabel;
         if (p.revoked) {
           statusCls = 'revoked';
@@ -346,12 +333,9 @@
         } else if (p.deceased) {
           statusCls = 'deceased';
           statusLabel = p.deathYear ? `† ${p.deathYear}` : 'Deceased';
-        } else if (p.active) {
-          statusCls = 'active';
-          statusLabel = 'Active';
         } else {
-          statusCls = '';
-          statusLabel = 'Inactive';
+          statusCls = 'active';
+          statusLabel = 'Living';
         }
         const bornCell = p.bday ?? '—';
         const avatarHtml = p.photo
@@ -366,8 +350,6 @@
             </div>
           </td>
           <td><span class="fed-cell"><span class="fed-flag" aria-hidden="true">${fedFlag(p.fed)}</span><span>${escapeHtml(p.fedName)}</span></span></td>
-          <td class="num rating-cell ${isTop ? 'top' : ''}">${p.rating ?? '—'}</td>
-          <td class="num">${p.peak}</td>
           <td class="num">${bornCell}</td>
           <td>${p.sex === 'F' ? 'Female' : p.sex === 'M' ? 'Male' : '—'}</td>
           <td><span class="status-dot ${statusCls}">${statusLabel}</span></td>
@@ -424,18 +406,15 @@
       { label: 'Previous Federation',      val: (p) => p.prevFedName },
       { label: 'Federation History',       val: (p) => Array.isArray(p.fedHistoryNames) ? p.fedHistoryNames.join(' -> ') : '' },
       { label: 'Federation History Codes', val: (p) => Array.isArray(p.fedHistory) ? p.fedHistory.join(' -> ') : '' },
-      { label: 'Current Rating',           val: (p) => p.rating },
-      { label: 'Peak Rating',              val: (p) => p.peak },
       { label: 'Birth Year',               val: (p) => p.bday },
       { label: 'GM Title Year',            val: (p) => p.gmYear ?? '' },
       { label: 'Birth City',               val: (p) => p.birthCity },
       { label: 'Birth Country',            val: (p) => p.birthCountryName },
       { label: 'Gender',                   val: (p) => p.sex === 'F' ? 'Female' : 'Male' },
-      { label: 'Status',                   val: (p) => p.revoked ? (p.revokedYear ? `Title Revoked (${p.revokedYear})` : 'Title Revoked') : p.deceased ? (p.deathYear ? `Deceased (${p.deathYear})` : 'Deceased') : (p.active ? 'Active' : 'Inactive') },
+      { label: 'Status',                   val: (p) => p.revoked ? (p.revokedYear ? `Title Revoked (${p.revokedYear})` : 'Title Revoked') : p.deceased ? (p.deathYear ? `Deceased (${p.deathYear})` : 'Deceased') : 'Living' },
       { label: 'Title Revoked Year',       val: (p) => p.revokedYear ?? '' },
       { label: 'Title Revoked Reason',     val: (p) => p.revokedReason ?? '' },
-      { label: 'Games',                    val: (p) => p.games },
-      { label: 'Playstyle',                val: (p) => p.style ? topStyleAxis(p.style).label : '' },
+      { label: 'Playstyle',                val: (p) => styleLabel(p) },
       { label: 'FIDE ID',                  val: (p) => p.id },
     ];
     const rows = state.filtered;
@@ -474,7 +453,6 @@
     modalRoot.hidden = true;
     state.activeId = null;
     document.body.style.overflow = '';
-    if (state.eloChart) { state.eloChart.destroy(); state.eloChart = null; }
     if (state.radarChart) { state.radarChart.destroy(); state.radarChart = null; }
     if (location.hash.startsWith('#p-')) {
       history.pushState(null, '', location.pathname + location.search);
@@ -496,7 +474,6 @@
       modalRoot.hidden = true;
       state.activeId = null;
       document.body.style.overflow = '';
-      if (state.eloChart) { state.eloChart.destroy(); state.eloChart = null; }
       if (state.radarChart) { state.radarChart.destroy(); state.radarChart = null; }
     }
   }
@@ -519,98 +496,18 @@
     const c = chartColors();
     document.getElementById('modalContent').innerHTML = profileTemplate(p);
 
-    // Stats — rank reflects current view: filtered position if filters narrow the set,
-    // otherwise the global FIDE rank in the full player pool.
-    const filtersActive = state.filtered.length !== state.raw.players.length;
-    const rankList = filtersActive ? state.filtered : state.raw.players;
-    const rank = rankList.findIndex((x) => x.id === id) + 1;
-    document.getElementById('p-rank-label').textContent = filtersActive ? 'Rank in view' : 'World Rank';
-    document.getElementById('p-rank').textContent = rank > 0 ? `#${rank.toLocaleString()}` : '—';
-
-    // Build ELO chart
-    if (state.eloChart) state.eloChart.destroy();
     if (state.radarChart) state.radarChart.destroy();
-    const axis = state.raw.historyAxis;
-    const labels = axis.map((d) => {
-      const [y, m] = d.split('-');
-      return `${y}-${m}`;
-    });
-    const hasHistory = p.history.some((v) => v != null);
-    const eloCanvas = document.getElementById('eloChart');
-    if (!hasHistory) {
-      // Replace canvas with a friendly placeholder for pre-2016 deceased players
-      const placeholder = document.createElement('div');
-      placeholder.className = 'chart-placeholder';
-      const era = (p.bday && p.deathYear) ? `${p.bday}\u2013${p.deathYear}` : (p.deathYear ? `\u2020 ${p.deathYear}` : 'historical');
-      placeholder.innerHTML = `<div class="cp-icon">\u265E</div><div class="cp-text"><strong>No rating data 2016\u20132026</strong><div class="cp-sub">${escapeHtml(p.name.split(',')[0])} played before the modern rating window (${era}). Estimated peak rating: <b>${p.peak}</b>.</div></div>`;
-      eloCanvas.replaceWith(placeholder);
-      state.eloChart = null;
-    } else {
-    state.eloChart = new Chart(eloCanvas, {
-      type: 'line',
-      data: {
-        labels,
-        datasets: [{
-          label: 'Standard rating',
-          data: p.history,
-          borderColor: c.line,
-          backgroundColor: c.area,
-          borderWidth: 2,
-          tension: 0.35,
-          fill: true,
-          pointRadius: 0,
-          pointHoverRadius: 4,
-          pointHoverBackgroundColor: c.line,
-          spanGaps: true,
-        }],
-      },
-      options: {
-        responsive: true,
-        maintainAspectRatio: false,
-        animation: animate ? { duration: 500 } : false,
-        interaction: { mode: 'index', intersect: false },
-        plugins: {
-          legend: { display: false },
-          tooltip: {
-            backgroundColor: c.text,
-            titleColor: '#fff',
-            bodyColor: '#fff',
-            callbacks: {
-              title: (items) => {
-                const d = axis[items[0].dataIndex];
-                const [y, m] = d.split('-');
-                const monthName = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'][parseInt(m, 10) - 1];
-                return `${monthName} ${y}`;
-              },
-            },
-          },
-        },
-        scales: {
-          x: {
-            grid: { display: false },
-            ticks: {
-              color: c.muted,
-              maxTicksLimit: 8,
-              callback: function(val) {
-                const lbl = this.getLabelForValue(val);
-                return lbl.endsWith('-01') ? lbl.slice(0, 4) : '';
-              },
-              font: { size: 11 },
-            },
-          },
-          y: {
-            grid: { color: c.grid, lineWidth: 0.5 },
-            border: { display: false },
-            ticks: { color: c.muted, font: { size: 11 } },
-          },
-        },
-      },
-    });
+    state.radarChart = null;
 
+    // Radar chart — skipped entirely when the player has no style data
+    // (profileTemplate omits the canvas in that case).
+    const radarCanvas = document.getElementById('radarChart');
+    if (!radarCanvas || !hasStyle(p)) {
+      document.getElementById('downloadShare').addEventListener('click', () => downloadCard(p));
+      return;
     }
-    // Radar chart
     const s = p.style;
-    state.radarChart = new Chart(document.getElementById('radarChart'), {
+    state.radarChart = new Chart(radarCanvas, {
       type: 'radar',
       data: {
         labels: ['Aggressive', 'Positional', 'Tactical', 'Endgame', 'Opening Prep', 'Defense'],
@@ -652,8 +549,7 @@
     let statusLabel;
     if (p.revoked) statusLabel = p.revokedYear ? `<span class="revoked-pill" title="${escapeHtml(p.revokedReason || '')}">Title Revoked ${p.revokedYear}</span>` : `<span class="revoked-pill">Title Revoked</span>`;
     else if (p.deceased) statusLabel = p.deathYear ? `Deceased (${p.deathYear})` : 'Deceased';
-    else if (p.active) statusLabel = 'Active';
-    else statusLabel = 'Inactive';
+    else statusLabel = 'Living';
     // Federation history: show full chain when player has more than one prior federation.
     // For a single transfer (chain length 2), preserve the existing "Previously X" wording.
     let transfer = '';
@@ -682,6 +578,15 @@
     const revokedNote = p.revoked && p.revokedReason
       ? `<div class="revoked-note"><strong>Title revoked${p.revokedYear ? ` (${p.revokedYear})` : ''}.</strong> ${escapeHtml(p.revokedReason)}</div>`
       : '';
+    // A player may have an EMPTY style object — render no canvas at all rather
+    // than a broken/empty chart box.
+    const radarSection = hasStyle(p) ? `
+      <div class="profile-body">
+        <div class="chart-card">
+          <div class="chart-title">Playstyle Radar<span class="est-badge" title="Playstyle axes (Aggressive, Positional, Tactical, Endgame, Opening Prep, Defense) are editorial estimates, not measured from game data.">Estimated</span></div>
+          <div class="chart-box"><canvas id="radarChart"></canvas></div>
+        </div>
+      </div>` : '';
     const nonNote = p.fed === 'NON'
       ? `<div class="revoked-note"><strong>Unaffiliated (NON).</strong> This player is not currently represented by a national chess federation and competes under FIDE's "Non Federation" status.</div>`
       : '';
@@ -706,24 +611,13 @@
       ${nonNote}
 
       <div class="stat-row">
-        <div class="stat"><div class="stat-label">Current ELO</div><div class="stat-value">${p.rating ?? '—'}</div></div>
-        <div class="stat"><div class="stat-label">Peak ELO<span class="est-badge" title="Peak ELO is a model-derived estimate for most players. Historical peaks for well-known legends (e.g. Carlsen 2882, Kasparov 2851, Fischer 2785, Tal 2705) are hard-coded from FIDE records.">Est.</span></div><div class="stat-value">${p.peak}</div></div>
-        <div class="stat"><div class="stat-label">${p.deceased ? 'Lifespan' : 'Born'}</div><div class="stat-value">${p.bday ?? '—'}${p.deceased && p.deathYear ? ` – ${p.deathYear}` : ''}</div></div>
+        <div class="stat"><div class="stat-label">Federation</div><div class="stat-value">${escapeHtml(p.fed || '—')}</div></div>
+        <div class="stat"><div class="stat-label">${p.deceased ? 'Lifespan' : 'Born'}</div><div class="stat-value">${p.bday ?? '—'}${p.deceased && p.deathYear ? ` – ${p.deathYear}` : ''}</div></div>
         <div class="stat"><div class="stat-label">GM Title</div><div class="stat-value">${p.revoked && p.gmYear && p.revokedYear ? `<span class="gm-revoked">${p.gmYear} <span class="gm-arrow">→</span> ${p.revokedYear}</span>` : (p.gmYear ?? '—')}</div></div>
-        <div class="stat"><div class="stat-label">Games</div><div class="stat-value">${p.games || 0}</div></div>
-        <div class="stat"><div class="stat-label" id="p-rank-label">World Rank</div><div class="stat-value" id="p-rank">—</div></div>
+        <div class="stat"><div class="stat-label">Playstyle</div><div class="stat-value" style="font-size:16px;line-height:1.2">${escapeHtml(styleLabel(p) || '—')}</div></div>
       </div>
 
-      <div class="profile-body">
-        <div class="chart-card">
-          <div class="chart-title">10-Year Rating Trend<span class="est-badge" title="Historical rating series is reconstructed from a deterministic per-player model anchored on current and peak ELO — not sourced from monthly FIDE lists.">Estimated</span></div>
-          <div class="chart-box"><canvas id="eloChart"></canvas></div>
-        </div>
-        <div class="chart-card">
-          <div class="chart-title">Playstyle Radar<span class="est-badge" title="Playstyle axes (Aggressive, Positional, Tactical, Endgame, Opening Prep, Defense) are derived from a heuristic model, not measured from game data.">Estimated</span></div>
-          <div class="chart-box"><canvas id="radarChart"></canvas></div>
-        </div>
-      </div>
+      ${radarSection}
 
       <details class="share-section" id="shareDetails">
         <summary class="share-summary">
@@ -747,8 +641,8 @@
   }
 
   function shareCardHTML(p) {
-    const styleTop = topStyleAxis(p.style);
-    const tagline = generateTagline(p, styleTop);
+    const tagline = generateTagline(p);
+    const bornValue = p.bday ? (p.deceased && p.deathYear ? `${p.bday}–${p.deathYear}` : String(p.bday)) : '—';
     return `
       <div class="share-card" id="shareCardEl">
         <div class="sc-knight">♞</div>
@@ -761,16 +655,16 @@
           <div class="sc-subtitle">${escapeHtml(tagline)}</div>
           <div class="sc-stats">
             <div class="sc-stat">
-              <div class="sc-stat-label">Current ELO</div>
-              <div class="sc-stat-value">${p.rating ?? '—'}</div>
+              <div class="sc-stat-label">${p.deceased ? 'Lifespan' : 'Born'}</div>
+              <div class="sc-stat-value">${escapeHtml(bornValue)}</div>
             </div>
             <div class="sc-stat">
-              <div class="sc-stat-label">Peak ELO</div>
-              <div class="sc-stat-value">${p.peak}</div>
+              <div class="sc-stat-label">GM Title</div>
+              <div class="sc-stat-value">${p.gmYear ?? '—'}</div>
             </div>
             <div class="sc-stat">
               <div class="sc-stat-label">Style</div>
-              <div class="sc-stat-value" style="font-size:16px;line-height:1.1">${styleTop.label}</div>
+              <div class="sc-stat-value" style="font-size:16px;line-height:1.1">${escapeHtml(styleLabel(p) || '—')}</div>
             </div>
           </div>
         </div>
@@ -781,7 +675,10 @@
     `;
   }
 
-  function topStyleAxis(style) {
+  // Returns the dominant playstyle label, or '' when the player has no style data.
+  function styleLabel(p) {
+    if (!hasStyle(p)) return '';
+    const style = p.style;
     const axes = [
       { k: 'aggressive', label: 'Aggressive Attacker' },
       { k: 'positional', label: 'Positional Player' },
@@ -790,20 +687,18 @@
       { k: 'opening', label: 'Opening Theorist' },
       { k: 'defense', label: 'Resilient Defender' },
     ];
-    let top = axes[0]; let topV = -1;
+    let top = null; let topV = -1;
     for (const a of axes) {
-      if (style[a.k] > topV) { topV = style[a.k]; top = a; }
+      if (typeof style[a.k] === 'number' && style[a.k] > topV) { topV = style[a.k]; top = a; }
     }
-    return top;
+    return top ? top.label : '';
   }
 
-  function generateTagline(p, styleTop) {
-    const parts = [];
-    if (p.peak >= 2800) parts.push('Super-elite 2800+ peak');
-    else if (p.peak >= 2700) parts.push('Super-GM');
-    else if (p.peak >= 2600) parts.push('Strong GM');
-    else parts.push('Grandmaster');
-    parts.push(styleTop.label);
+  function generateTagline(p) {
+    const parts = ['Grandmaster'];
+    if (p.fedName) parts.push(p.fedName);
+    const sl = styleLabel(p);
+    if (sl) parts.push(sl);
     if (p.age != null && p.age < 20) parts.push('Prodigy');
     else if (p.age != null && p.age >= 60) parts.push('Veteran');
     return parts.slice(0, 3).join(' · ');

@@ -2,13 +2,13 @@
  *
  * Reads the FIDE ID from the containing <article data-fide-id="..."> that
  * build_pages.py stamps into every player/<id>.html, fetches the live data.json
- * from the CDN (with local fallback), and hydrates the trend chart, radar
- * chart, share-card, and the World-Rank stat that couldn't be prerendered.
+ * from the CDN (with local fallback), and hydrates the playstyle radar chart
+ * and share-card that couldn't be prerendered.
  *
- * Server-rendered HTML in player/<id>.html already provides the profile head,
- * stat tiles, and estimated-badge tooltips — those don't need re-rendering.
- * We ONLY paint the two charts and wire up the share button. If Chart.js
- * fails to load or the fetch fails, the static content still renders fine.
+ * Server-rendered HTML in player/<id>.html already provides the profile head
+ * and stat tiles — those don't need re-rendering. We ONLY paint the radar chart
+ * and wire up the share button. If Chart.js fails to load or the fetch fails,
+ * the static content still renders fine.
  */
 (() => {
   const REMOTE_DATA_URL = 'https://cdn.jsdelivr.net/gh/scfromor/grandmaster-almanac@master/gm-dashboard/data.json';
@@ -24,7 +24,6 @@
   let theme = matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
   const SUN = `<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="4.5"/><path d="M12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M2 12h2M20 12h2M4.93 19.07l1.41-1.41M17.66 6.34l1.41-1.41"/></svg>`;
   const MOON = `<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/></svg>`;
-  let eloChart = null;
   let radarChart = null;
   function applyTheme() {
     root.setAttribute('data-theme', theme);
@@ -32,8 +31,8 @@
       themeToggle.innerHTML = theme === 'dark' ? SUN : MOON;
       themeToggle.setAttribute('aria-label', `Switch to ${theme === 'dark' ? 'light' : 'dark'} mode`);
     }
-    // Re-paint charts when theme changes so grid/tick colors match the theme
-    if (window.__loadedPlayer) hydrate(window.__loadedPlayer, window.__loadedData);
+    // Re-paint the radar chart when theme changes so grid/tick colors match
+    if (window.__loadedPlayer) hydrate(window.__loadedPlayer);
   }
   if (themeToggle) {
     themeToggle.addEventListener('click', () => {
@@ -100,7 +99,19 @@
     };
   }
 
-  function topStyleAxis(style) {
+  // A player may ship with an EMPTY style object (style axes are static data now
+  // and are left blank for players added after the ratings removal).
+  function hasStyle(p) {
+    const st = p && p.style;
+    if (!st) return false;
+    return ['aggressive','positional','tactical','endgame','opening','defense']
+      .some((k) => typeof st[k] === 'number');
+  }
+
+  // Returns the dominant playstyle label, or '' when the player has no style data.
+  function styleLabel(p) {
+    if (!hasStyle(p)) return '';
+    const style = p.style;
     const axes = [
       { k: 'aggressive', label: 'Aggressive Attacker' },
       { k: 'positional', label: 'Positional Player' },
@@ -109,28 +120,26 @@
       { k: 'opening', label: 'Opening Theorist' },
       { k: 'defense', label: 'Resilient Defender' },
     ];
-    let top = axes[0]; let topV = -1;
+    let top = null; let topV = -1;
     for (const a of axes) {
-      if (style[a.k] > topV) { topV = style[a.k]; top = a; }
+      if (typeof style[a.k] === 'number' && style[a.k] > topV) { topV = style[a.k]; top = a; }
     }
-    return top;
+    return top ? top.label : '';
   }
 
-  function generateTagline(p, styleTop) {
-    const parts = [];
-    if (p.peak >= 2800) parts.push('Super-elite 2800+ peak');
-    else if (p.peak >= 2700) parts.push('Super-GM');
-    else if (p.peak >= 2600) parts.push('Strong GM');
-    else parts.push('Grandmaster');
-    parts.push(styleTop.label);
+  function generateTagline(p) {
+    const parts = ['Grandmaster'];
+    if (p.fedName) parts.push(p.fedName);
+    const sl = styleLabel(p);
+    if (sl) parts.push(sl);
     if (p.age != null && p.age < 20) parts.push('Prodigy');
     else if (p.age != null && p.age >= 60) parts.push('Veteran');
     return parts.slice(0, 3).join(' · ');
   }
 
   function shareCardHTML(p) {
-    const styleTop = topStyleAxis(p.style);
-    const tagline = generateTagline(p, styleTop);
+    const tagline = generateTagline(p);
+    const bornValue = p.bday ? (p.deceased && p.deathYear ? `${p.bday}–${p.deathYear}` : String(p.bday)) : '—';
     return `
       <div class="share-card" id="shareCardEl">
         <div class="sc-knight">♞</div>
@@ -143,16 +152,16 @@
           <div class="sc-subtitle">${escapeHtml(tagline)}</div>
           <div class="sc-stats">
             <div class="sc-stat">
-              <div class="sc-stat-label">Current ELO</div>
-              <div class="sc-stat-value">${p.rating ?? '—'}</div>
+              <div class="sc-stat-label">${p.deceased ? 'Lifespan' : 'Born'}</div>
+              <div class="sc-stat-value">${escapeHtml(bornValue)}</div>
             </div>
             <div class="sc-stat">
-              <div class="sc-stat-label">Peak ELO</div>
-              <div class="sc-stat-value">${p.peak}</div>
+              <div class="sc-stat-label">GM Title</div>
+              <div class="sc-stat-value">${p.gmYear ?? '—'}</div>
             </div>
             <div class="sc-stat">
               <div class="sc-stat-label">Style</div>
-              <div class="sc-stat-value" style="font-size:16px;line-height:1.1">${styleTop.label}</div>
+              <div class="sc-stat-value" style="font-size:16px;line-height:1.1">${escapeHtml(styleLabel(p) || '—')}</div>
             </div>
           </div>
         </div>
@@ -202,106 +211,15 @@
     }
   }
 
-  function paintRankStat(p, all) {
-    // Real World Rank: 1 = highest current rating among rated active players.
-    // Matches the "World Rank" the modal shows when no filters are applied.
-    const rated = all.filter((x) => typeof x.rating === 'number');
-    rated.sort((a, b) => b.rating - a.rating);
-    const idx = rated.findIndex((x) => x.id === p.id);
-    const rank = idx >= 0 ? idx + 1 : null;
-    const nodes = document.querySelectorAll('.stat');
-    // The last .stat tile holds World Rank (see render_page in build_pages.py)
-    const last = nodes[nodes.length - 1];
-    if (!last) return;
-    const val = last.querySelector('.stat-value');
-    if (val) val.textContent = rank ? '#' + rank.toLocaleString() : '—';
-  }
-
-  function hydrate(p, data) {
+  function hydrate(p) {
     const c = chartColors();
-    if (eloChart) { eloChart.destroy(); eloChart = null; }
     if (radarChart) { radarChart.destroy(); radarChart = null; }
 
-    // ===== Rating trend =====
-    const eloCanvas = document.getElementById('eloChart');
-    const hasHistory = p.history && p.history.some((v) => v != null);
-    if (eloCanvas && hasHistory && window.Chart) {
-      const axis = data.historyAxis;
-      const labels = axis.map((d) => {
-        const [y, m] = d.split('-');
-        return `${y}-${m}`;
-      });
-      eloChart = new Chart(eloCanvas, {
-        type: 'line',
-        data: {
-          labels,
-          datasets: [{
-            label: 'Standard rating',
-            data: p.history,
-            borderColor: c.line,
-            backgroundColor: c.area,
-            borderWidth: 2,
-            tension: 0.35,
-            fill: true,
-            pointRadius: 0,
-            pointHoverRadius: 4,
-            pointHoverBackgroundColor: c.line,
-            spanGaps: true,
-          }],
-        },
-        options: {
-          responsive: true,
-          maintainAspectRatio: false,
-          animation: { duration: 500 },
-          interaction: { mode: 'index', intersect: false },
-          plugins: {
-            legend: { display: false },
-            tooltip: {
-              backgroundColor: c.text,
-              titleColor: '#fff',
-              bodyColor: '#fff',
-              callbacks: {
-                title: (items) => {
-                  const d = axis[items[0].dataIndex];
-                  const [y, m] = d.split('-');
-                  const monthName = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'][parseInt(m, 10) - 1];
-                  return `${monthName} ${y}`;
-                },
-              },
-            },
-          },
-          scales: {
-            x: {
-              grid: { display: false },
-              ticks: {
-                color: c.muted,
-                maxTicksLimit: 8,
-                callback: function(val) {
-                  const lbl = this.getLabelForValue(val);
-                  return lbl.endsWith('-01') ? lbl.slice(0, 4) : '';
-                },
-                font: { size: 11 },
-              },
-            },
-            y: {
-              grid: { color: c.grid, lineWidth: 0.5 },
-              border: { display: false },
-              ticks: { color: c.muted, font: { size: 11 } },
-            },
-          },
-        },
-      });
-    } else if (eloCanvas && !hasHistory) {
-      const placeholder = document.createElement('div');
-      placeholder.className = 'chart-placeholder';
-      const era = (p.bday && p.deathYear) ? `${p.bday}\u2013${p.deathYear}` : (p.deathYear ? `\u2020 ${p.deathYear}` : 'historical');
-      placeholder.innerHTML = `<div class="cp-icon">\u265E</div><div class="cp-text"><strong>No rating data 2016\u20132026</strong><div class="cp-sub">${escapeHtml(p.name.split(',')[0])} played before the modern rating window (${era}). Estimated peak rating: <b>${p.peak}</b>.</div></div>`;
-      eloCanvas.replaceWith(placeholder);
-    }
-
     // ===== Playstyle radar =====
+    // Players with an empty style object get no chart at all — build_pages.py
+    // omits the canvas for them, so this simply no-ops.
     const radarCanvas = document.getElementById('radarChart');
-    if (radarCanvas && p.style && window.Chart) {
+    if (radarCanvas && hasStyle(p) && window.Chart) {
       const s = p.style;
       radarChart = new Chart(radarCanvas, {
         type: 'radar',
@@ -335,10 +253,9 @@
       });
     }
 
-    // ===== Share card + world rank =====
+    // ===== Share card =====
     const shareHost = document.getElementById('shareCard');
     if (shareHost) shareHost.innerHTML = shareCardHTML(p);
-    paintRankStat(p, data.players);
     const btn = document.getElementById('downloadShare');
     if (btn) btn.addEventListener('click', () => downloadCard(p), { once: true });
   }
@@ -361,8 +278,7 @@
       }
       // Cache for theme re-paint
       window.__loadedPlayer = p;
-      window.__loadedData = data;
-      hydrate(p, data);
+      hydrate(p);
     })
     .catch((err) => {
       console.error('Failed to hydrate player page:', err);

@@ -6,7 +6,7 @@
     <title>Grandmaster Almanac — A Chess Dashboard</title>
     <meta
       name="description"
-      content="Sortable, filterable dashboard of 2,100+ chess Grandmasters (FIDE + Wikipedia) with 10-year rating trends, playstyle radars, and shareable career cards."
+      content="A biographical directory of 2,100+ chess Grandmasters — federations, birthplaces, title years, playstyle radars, and shareable career cards."
     />
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
@@ -38,7 +38,7 @@
         </svg>
         <div>
           <h1>Grandmaster Almanac</h1>
-          <p class="brand-sub">FIDE standard rating list · <span id="ratingPeriod">—</span></p>
+          <p class="brand-sub">A biographical directory of chess grandmasters</p>
         </div>
       </div>
       <div class="topbar-actions">
@@ -66,20 +66,6 @@
           <kbd>/</kbd>
         </div>
         <div class="filter-grid">
-          <label class="field">
-            <span>Current ELO</span>
-            <div class="dual">
-              <input id="curMin" type="number" placeholder="min" inputmode="numeric" />
-              <input id="curMax" type="number" placeholder="max" inputmode="numeric" />
-            </div>
-          </label>
-          <label class="field">
-            <span>Peak ELO</span>
-            <div class="dual">
-              <input id="peakMin" type="number" placeholder="min" inputmode="numeric" />
-              <input id="peakMax" type="number" placeholder="max" inputmode="numeric" />
-            </div>
-          </label>
           <label class="field">
             <span>Birth year</span>
             <div class="dual">
@@ -110,11 +96,9 @@
           <label class="field">
             <span>Status</span>
             <select id="status">
-              <option value="active">Active (rated)</option>
-              <option value="living">Living (active + inactive)</option>
-              <option value="inactive">Inactive (living)</option>
-              <option value="revoked">Title Revoked</option>
+              <option value="living">Living</option>
               <option value="deceased">Deceased</option>
+              <option value="revoked">Title revoked</option>
               <option value="">All players</option>
             </select>
           </label>
@@ -135,11 +119,9 @@
                 <th data-sort="rank" class="num">#</th>
                 <th data-sort="name">Player</th>
                 <th data-sort="fed">Federation</th>
-                <th data-sort="rating" class="num">Current</th>
-                <th data-sort="peak" class="num">Peak</th>
                 <th data-sort="bday" class="num">Born</th>
                 <th data-sort="sex">Gender</th>
-                <th data-sort="active">Status</th>
+                <th data-sort="deceased">Status</th>
               </tr>
             </thead>
             <tbody id="tbody"></tbody>
@@ -162,11 +144,10 @@
       </section>
 
       <p class="note">
-        <strong>About the data.</strong> Current ratings, federation, gender, and birth year are
-        from the official <a href="https://ratings.fide.com/download_lists.phtml" target="_blank" rel="noopener">FIDE standard rating list</a>.
-        Peak rating, 10-year history, and playstyle radar are statistical estimates derived from
-        rating, age, and a deterministic per-player model; well-known peaks (Carlsen 2882, Kasparov 2851,
-        Fischer 2785, Tal 2705, etc.) are hard-coded. Deceased GM records and historical federations
+        <strong>About the data.</strong> The roster is hand-maintained: federation, gender, birth year,
+        GM title year, and status come from a curated dataset rather than any live feed.
+        Playstyle radar values are editorial estimates and are left blank for players without them.
+        Deceased GM records and historical federations
         (Soviet Union, Yugoslavia, Czechoslovakia, West/East Germany) are sourced from the
         <a href="https://en.wikipedia.org/wiki/List_of_chess_grandmasters" target="_blank" rel="noopener">Wikipedia List of chess grandmasters</a>.
         Country of birth is sourced from Wikipedia/Wikidata birth-place records where available; it is left blank

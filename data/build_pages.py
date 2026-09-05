@@ -13,10 +13,10 @@ grandmaster at `gm-dashboard/player/<FIDE_ID>.html`, containing:
     metadata Google/Bing/social platforms can index and preview.
     Canonical URLs are extensionless (player/<id>) to match Neocities'
     default behavior of 301-redirecting .html requests to the clean URL.
-  * Server-rendered profile facts (name, federation, rating, peak, birth,
+  * Server-rendered profile facts (name, federation, birth, GM title year,
     status) so the crawler sees content even without executing JS.
   * A boot script (`player.js`) that hydrates the page with the same
-    Chart.js trend + radar and share-card export as the modal, by re-reading
+    Chart.js playstyle radar and share-card export as the modal, by re-reading
     the FIDE ID from the URL.
 
 Also emits `gm-dashboard/sitemap.xml` covering the index + all player pages.
@@ -28,8 +28,11 @@ Outputs:
     gm-dashboard/player/<id>.html   — one per GM (~2,100+ files)
     gm-dashboard/sitemap.xml        — sitemap listing every URL
 
-This runs after refresh_dashboard.py in the monthly GitHub Actions workflow,
-and can also be executed standalone for local dev.
+This runs after the data build step in the GitHub Actions workflow, and can
+also be executed standalone for local dev.
+
+Ratings are not part of this site: there is no rating, peak, or rating-history
+output anywhere in the generated pages.
 """
 
 from __future__ import annotations
@@ -63,6 +66,35 @@ def esc(v) -> str:
     return html.escape(str(v), quote=True)
 
 
+STYLE_AXES = [
+    ("aggressive", "Aggressive Attacker"),
+    ("positional", "Positional Player"),
+    ("tactical", "Tactical Threat"),
+    ("endgame", "Endgame Specialist"),
+    ("opening", "Opening Theorist"),
+    ("defense", "Resilient Defender"),
+]
+
+
+def has_style(p: dict) -> bool:
+    """A player may have an EMPTY style object — then no radar is rendered."""
+    style = p.get("style") or {}
+    return any(isinstance(style.get(k), (int, float)) for k, _ in STYLE_AXES)
+
+
+def style_label(p: dict) -> str:
+    """Dominant playstyle axis label, or "" when the player has no style data."""
+    if not has_style(p):
+        return ""
+    style = p["style"]
+    best_label, best_value = "", None
+    for key, label in STYLE_AXES:
+        v = style.get(key)
+        if isinstance(v, (int, float)) and (best_value is None or v > best_value):
+            best_value, best_label = v, label
+    return best_label
+
+
 def status_label(p: dict) -> str:
     if p.get("revoked"):
         yr = p.get("revokedYear")
@@ -70,7 +102,7 @@ def status_label(p: dict) -> str:
     if p.get("deceased"):
         yr = p.get("deathYear")
         return f"Deceased ({yr})" if yr else "Deceased"
-    return "Active" if p.get("active") else "Inactive"
+    return "Living"
 
 
 def meta_description(p: dict) -> str:
@@ -79,10 +111,6 @@ def meta_description(p: dict) -> str:
     if p.get("fedName"):
         parts.append(f"({p['fedName']})")
     facts = []
-    if p.get("rating"):
-        facts.append(f"current FIDE {p['rating']}")
-    if p.get("peak"):
-        facts.append(f"peak {p['peak']}")
     if p.get("bday"):
         if p.get("deceased") and p.get("deathYear"):
             facts.append(f"{p['bday']}\u2013{p['deathYear']}")
@@ -95,7 +123,7 @@ def meta_description(p: dict) -> str:
     else:
         parts.append("\u2014 career profile.")
     parts.append(
-        "Rating history, playstyle radar, and shareable career card on the "
+        "Biography, playstyle radar, and shareable career card on the "
         "Grandmaster Almanac."
     )
     return " ".join(parts)
@@ -256,26 +284,15 @@ PAGE_TEMPLATE = """<!doctype html>
           {bio_block}
 
           <div class="stat-row">
-            <div class="stat"><div class="stat-label">Current ELO</div><div class="stat-value">{rating}</div></div>
-            <div class="stat"><div class="stat-label">Peak ELO<span class="est-badge" title="Peak ELO is a model-derived estimate for most players. Historical peaks for well-known legends are hard-coded from FIDE records.">Est.</span></div><div class="stat-value">{peak}</div></div>
+            <div class="stat"><div class="stat-label">Federation</div><div class="stat-value">{fed_code}</div></div>
             <div class="stat"><div class="stat-label">{born_label}</div><div class="stat-value">{born_value}</div></div>
             <div class="stat"><div class="stat-label">GM Title</div><div class="stat-value">{gm_year}</div></div>
-            <div class="stat"><div class="stat-label">Games</div><div class="stat-value">{games}</div></div>
-            <div class="stat"><div class="stat-label">World Rank</div><div class="stat-value">{rank_display}</div></div>
+            <div class="stat"><div class="stat-label">Playstyle</div><div class="stat-value" style="font-size:16px;line-height:1.2">{style_label}</div></div>
           </div>
 
-          <!-- Charts are hydrated by player.js on load. Static markup below is a
-               fallback for crawlers/no-JS clients. -->
-          <div class="profile-body" id="profileBody">
-            <div class="chart-card">
-              <div class="chart-title">10-Year Rating Trend<span class="est-badge" title="Historical rating series is reconstructed from a deterministic per-player model anchored on current and peak ELO \u2014 not sourced from monthly FIDE lists.">Estimated</span></div>
-              <div class="chart-box"><canvas id="eloChart"></canvas></div>
-            </div>
-            <div class="chart-card">
-              <div class="chart-title">Playstyle Radar<span class="est-badge" title="Playstyle axes (Aggressive, Positional, Tactical, Endgame, Opening Prep, Defense) are derived from a heuristic model, not measured from game data.">Estimated</span></div>
-              <div class="chart-box"><canvas id="radarChart"></canvas></div>
-            </div>
-          </div>
+          <!-- The radar chart is hydrated by player.js on load. It is omitted
+               entirely for players with an empty style object. -->
+          {radar_block}
 
           <details class="share-section" id="shareDetails">
             <summary class="share-summary">
@@ -297,11 +314,10 @@ PAGE_TEMPLATE = """<!doctype html>
           </details>
 
           <p class="note">
-            <strong>About the data.</strong> Current ratings and federation are from the official
-            <a href="https://ratings.fide.com/download_lists.phtml" target="_blank" rel="noopener">FIDE standard rating list</a>.
-            Peak rating, 10-year history, and playstyle radar are statistical estimates derived from
-            rating, age, and a deterministic per-player model. See the
-            <a href="../">Grandmaster Almanac directory</a> for the full dataset and filters.
+            <strong>About the data.</strong> The roster is hand-maintained: federation, birth details,
+            GM title year, and status come from a curated dataset rather than any live feed.
+            Playstyle radar values are editorial estimates and are left blank for players without them.
+            See the <a href="../">Grandmaster Almanac directory</a> for the full dataset and filters.
           </p>
         </div>
       </article>
@@ -313,6 +329,14 @@ PAGE_TEMPLATE = """<!doctype html>
   </body>
 </html>
 """
+
+
+RADAR_BLOCK = """<div class="profile-body" id="profileBody">
+            <div class="chart-card">
+              <div class="chart-title">Playstyle Radar<span class="est-badge" title="Playstyle axes (Aggressive, Positional, Tactical, Endgame, Opening Prep, Defense) are editorial estimates, not measured from game data.">Estimated</span></div>
+              <div class="chart-box"><canvas id="radarChart"></canvas></div>
+            </div>
+          </div>"""
 
 
 def build_meta_line(p: dict) -> str:
@@ -462,6 +486,8 @@ def render_page(p: dict) -> str:
     og_image_tag = ""
     if p.get("photo"):
         og_image_tag = f'<meta property="og:image" content="{esc(p["photo"])}" />'
+    # Empty style object -> no canvas at all, rather than a broken chart box.
+    radar_block = RADAR_BLOCK if has_style(p) else ""
     born_label = "Lifespan" if p.get("deceased") else "Born"
     if p.get("deceased") and p.get("deathYear") and p.get("bday"):
         born_value = f"{p['bday']} \u2013 {p['deathYear']}"
@@ -481,13 +507,12 @@ def render_page(p: dict) -> str:
         name=esc(p["name"]),
         meta_line=build_meta_line(p),
         bio_block=build_bio_block(p),
-        rating=esc(p.get("rating") if p.get("rating") is not None else "\u2014"),
-        peak=esc(p.get("peak") if p.get("peak") is not None else "\u2014"),
+        fed_code=esc(p.get("fed") or "\u2014"),
         born_label=born_label,
         born_value=esc(born_value),
         gm_year=esc(p.get("gmYear") if p.get("gmYear") else "\u2014"),
-        games=esc(p.get("games") or 0),
-        rank_display="\u2014",  # Hydrated on client-side once data.json loads
+        style_label=esc(style_label(p) or "\u2014"),
+        radar_block=radar_block,
     )
 
 
@@ -514,7 +539,7 @@ def build_sitemap(players: list[dict]) -> str:
 
 def main() -> None:
     if not os.path.exists(DATA_JSON):
-        print(f"ERROR: {DATA_JSON} not found. Run refresh_dashboard.py first.",
+        print(f"ERROR: {DATA_JSON} not found. Build data.json first.",
               file=sys.stderr)
         sys.exit(1)
 
@@ -525,7 +550,7 @@ def main() -> None:
         print("ERROR: No players in data.json", file=sys.stderr)
         sys.exit(1)
 
-    # Wipe & recreate — every refresh regenerates the full set, so stray files
+    # Wipe & recreate — every rebuild regenerates the full set, so stray files
     # from removed players (name changes, revoked-then-restored, dedup) are
     # cleared out. Safer than in-place update.
     if os.path.isdir(PLAYER_DIR):

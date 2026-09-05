@@ -305,8 +305,6 @@ main { max-width: 1400px; margin: 0 auto; padding: 22px 20px 80px; }
   color: var(--text-muted);
 }
 .fed-globe svg { width: 15px; height: 15px; }
-.rating-cell { font-weight: 600; }
-.rating-cell.top { color: var(--gold); }
 .status-dot { display: inline-flex; align-items: center; gap: 6px; font-size: var(--text-xs); color: var(--text-muted); }
 .status-dot::before {
   content: '';
@@ -346,41 +344,6 @@ main { max-width: 1400px; margin: 0 auto; padding: 22px 20px 80px; }
 .revoked-note strong { color: #b83a3a; margin-right: 4px; }
 .gm-revoked { color: var(--text); }
 .gm-revoked .gm-arrow { color: #b83a3a; margin: 0 2px; font-weight: 600; }
-
-.chart-placeholder {
-  display: flex;
-  align-items: center;
-  gap: 14px;
-  height: 100%;
-  min-height: 220px;
-  padding: 20px;
-  border-radius: 10px;
-  background: var(--surface-2);
-  color: var(--text-muted);
-  text-align: left;
-}
-.chart-placeholder .cp-icon {
-  font-size: 48px;
-  line-height: 1;
-  color: var(--primary);
-  opacity: 0.85;
-  flex-shrink: 0;
-}
-.chart-placeholder .cp-text strong {
-  display: block;
-  color: var(--text);
-  font-size: var(--text-sm);
-  font-weight: 600;
-  margin-bottom: 4px;
-}
-.chart-placeholder .cp-sub {
-  font-size: var(--text-xs);
-  line-height: 1.5;
-}
-.chart-placeholder .cp-sub b {
-  color: var(--text);
-  font-weight: 600;
-}
 
 .table-foot {
   display: flex;
