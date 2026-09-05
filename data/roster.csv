@@ -454,7 +454,7 @@ W0675111,"Duras, Oldřich",TCH,M,GM,,1882,1950,true,1957,false,,,CZE,Prague,TCH,
 14107201,"Efimenko, Zahar",UKR,M,GM,,1985,2002,false,,false,,,UKR,Makiivka,UKR,https://upload.wikimedia.org/wikipedia/commons/thumb/8/88/Zahar_Efimenko_2013.jpg/250px-Zahar_Efimenko_2013.jpg,,,,59,66,50,53,64,32
 806404,"Efimov, Igor",MNC,M,GM,,1960,1992,false,,false,,,GEO,Tbilisi,ITA|MNC,https://upload.wikimedia.org/wikipedia/commons/thumb/5/5a/Igor_Efimov_2014.jpg/250px-Igor_Efimov_2014.jpg,,,,54,51,81,51,74,45
 4500016,"Ehlvest, Jaan",USA,M,GM,,1962,1987,false,,false,,,EST,Tallinn,EST|USA,https://upload.wikimedia.org/wikipedia/commons/thumb/c/cb/London_Chess_Classic_2016_Day3-18_%2830767750964%29.jpg/250px-London_Chess_Classic_2016_Day3-18_%2830767750964%29.jpg,,,,55,53,77,49,65,45
-14100053,"Eingorn, Vereslav S",UKR,M,GM,,1956,1986,false,,false,,,UKR,Odesa,UKR,,,,,51,60,59,59,60,46
+14100053,"Eingorn, Vereslav S",UKR,M,GM,,1956,1986,true,2026,false,,,UKR,Odesa,UKR,,,,,51,60,59,59,60,46
 2106981,"El Debs, Felipe de Cresce",BRA,M,GM,,1985,2010,false,,false,,,BRA,São Carlos,BRA,https://upload.wikimedia.org/wikipedia/commons/thumb/9/9f/Felipe_El_Debs_2014_Basel.jpg/250px-Felipe_El_Debs_2014_Basel.jpg,,,,53,64,59,60,75,59
 10600140,"El Gindy, Essam",EGY,M,GM,,1966,2008,false,,false,,,EGY,Cairo,EGY,https://upload.wikimedia.org/wikipedia/en/thumb/d/d6/Essam_Elgindy.jpg/250px-Essam_Elgindy.jpg,,,,38,34,41,48,75,43
 3517470,"Elias Reyes, Jorge Roberto",CUB,M,GM,,1999,2026,false,,false,,,CUB,,CUB,,,,,63,43,64,53,55,43
@@ -1336,7 +1336,7 @@ W2702813,"Najdorf, Miguel",ARG,M,GM,,1910,1950,true,1997,false,,,POL,Grodzisk Ma
 15000605,"Nedev, Trajko",MKD,M,GM,,1973,2001,false,,false,,,MKD,,MKD,,,,,51,69,59,53,68,37
 5003512,"Neelotpal, Das",IND,M,GM,,1982,2006,false,,false,,,IND,Kolkata,IND,https://upload.wikimedia.org/wikipedia/commons/thumb/8/89/Neelotpal_Das_2011_Martigny_%28cropped%29.jpg/250px-Neelotpal_Das_2011_Martigny_%28cropped%29.jpg,,,,49,58,38,59,62,47
 5016690,"Negi, Parimarjan",IND,M,GM,,1993,2006,false,,false,,,IND,New Delhi,IND,https://upload.wikimedia.org/wikipedia/commons/thumb/1/1d/Parimarjan-Negi.jpg/250px-Parimarjan-Negi.jpg,,,,81,47,80,54,85,66
-4500059,"Nei, Iivo",EST,M,GM,,1931,2024,false,,false,,,EST,Tartu,EST,https://upload.wikimedia.org/wikipedia/commons/thumb/5/5c/Iivo_Nei_1966.jpg/250px-Iivo_Nei_1966.jpg,,,,79,78,53,79,65,41
+4500059,"Nei, Iivo",EST,M,GM,,1931,2024,true,2026,false,,,EST,Tartu,EST,https://upload.wikimedia.org/wikipedia/commons/thumb/5/5c/Iivo_Nei_1966.jpg/250px-Iivo_Nei_1966.jpg,,,,79,78,53,79,65,41
 11601388,"Neiksans, Arturs",LAT,M,GM,,1983,2012,false,,false,,,LAT,Valka,LAT,https://upload.wikimedia.org/wikipedia/commons/thumb/2/21/Arturs_Neik%C5%A1%C4%81ns.jpg/250px-Arturs_Neik%C5%A1%C4%81ns.jpg,,,,36,61,80,33,39,73
 1301438,"Nemet, Ivan",YUG,M,GM,,1943,1978,true,2007,false,,,SRB,Sombor,YUG,,,,,47,67,47,67,70,64
 4168119,"Nepomniachtchi, Ian",RUS,M,GM,,1990,2007,false,,false,,,RUS,Bryansk,RUS|FID|RUS,https://upload.wikimedia.org/wikipedia/commons/thumb/3/31/Ian_Nepomniachtchi_at_UzChess_Cup_2026.jpg/250px-Ian_Nepomniachtchi_at_UzChess_Cup_2026.jpg,,,,88,72,72,82,75,92
@@ -1803,7 +1803,7 @@ W6195109,"Simagin, Vladimir",URS,M,GM,,1919,1962,true,1968,false,,,RUS,Moscow,UR
 101966,"Spangenberg, Hugo",ARG,M,GM,,1975,1996,false,,false,,,ARG,Buenos Aires,ARG,,,,,49,64,60,39,64,53
 2900041,"Spasov, Vasil",BUL,M,GM,,1971,1990,false,,false,,,BUL,Varna,BUL,,,,,60,58,66,48,49,35
 600024,"Spassky, Boris V.",RUS,M,GM,,1937,1955,true,2025,false,,,RUS,Leningrad,FRA|RUS,https://upload.wikimedia.org/wikipedia/commons/thumb/4/47/Dhr._Boris_Spassky%2C_Bestanddeelnr_932-7320.jpg/250px-Dhr._Boris_Spassky%2C_Bestanddeelnr_932-7320.jpg,,,,78,75,75,75,78,80
-2900220,"Spassov, Liuben",BUL,M,GM,,1943,1976,false,,false,,,BUL,Sofia,BUL,,,,,52,48,48,50,43,45
+2900220,"Spassov, Liuben",BUL,M,GM,,1943,1976,true,2023,false,,,BUL,Sofia,BUL,,,,,52,48,48,50,43,45
 400033,"Speelman, Jon S",ENG,M,GM,,1956,1980,false,,false,,,ENG,London,ENG,https://upload.wikimedia.org/wikipedia/commons/thumb/f/f0/JonSpeelman24.jpg/250px-JonSpeelman24.jpg,,,,42,57,54,59,65,79
 2900238,"Spiridonov, Nikola",BUL,M,GM,,1938,1979,true,2021,false,,,BUL,Pleven,BUL,https://upload.wikimedia.org/wikipedia/commons/thumb/7/7d/Nikola_spiridonov.jpg/250px-Nikola_spiridonov.jpg,,,,39,71,50,64,53,36
 1010891,"Spoelman, Wouter",NED,M,GM,,1990,2009,false,,false,,,NED,Zwolle,NED,https://upload.wikimedia.org/wikipedia/commons/thumb/c/c5/Wouter_Spoelman_%28cropped%29.jpg/250px-Wouter_Spoelman_%28cropped%29.jpg,,,,50,54,83,52,67,70
