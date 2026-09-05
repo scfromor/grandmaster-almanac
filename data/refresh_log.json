@@ -1,15 +1,139 @@
 {
   "status": "ok",
-  "rating_period": "AUG26",
-  "total_players_published": 2147,
-  "active_gm_count": 1312,
+  "rating_period": "SEP26",
+  "total_players_published": 2164,
+  "active_gm_count": 1329,
   "diff": {
-    "new_gms_count": 0,
-    "transfers_count": 0,
-    "deaths_count": 1,
-    "new_gms": [],
-    "transfers": [],
+    "new_gms_count": 17,
+    "transfers_count": 1,
+    "deaths_count": 3,
+    "new_gms": [
+      {
+        "id": "13708309",
+        "name": "Agmanov, Zhandos",
+        "fed": "KAZ",
+        "rating": 2490
+      },
+      {
+        "id": "25072846",
+        "name": "Aronyak Ghosh",
+        "fed": "IND",
+        "rating": 2546
+      },
+      {
+        "id": "2623897",
+        "name": "Atanasov, Anthony",
+        "fed": "CAN",
+        "rating": 2481
+      },
+      {
+        "id": "14142317",
+        "name": "Baidetskyi, Valentin",
+        "fed": "AUT",
+        "rating": 2511
+      },
+      {
+        "id": "14210207",
+        "name": "Begmuratov, Khumoyun",
+        "fed": "UZB",
+        "rating": 2514
+      },
+      {
+        "id": "23718293",
+        "name": "Finek, Vaclav",
+        "fed": "CZE",
+        "rating": 2578
+      },
+      {
+        "id": "426520",
+        "name": "Grieve, Harry",
+        "fed": "ENG",
+        "rating": 2505
+      },
+      {
+        "id": "25059009",
+        "name": "Harshavardhan G B",
+        "fed": "IND",
+        "rating": 2512
+      },
+      {
+        "id": "30940303",
+        "name": "Liang, Jason",
+        "fed": "USA",
+        "rating": 2445
+      },
+      {
+        "id": "25659766",
+        "name": "Mayank Chakraborty",
+        "fed": "IND",
+        "rating": 2501
+      },
+      {
+        "id": "20000197",
+        "name": "Oro, Faustino",
+        "fed": "ARG",
+        "rating": 2537
+      },
+      {
+        "id": "13611216",
+        "name": "Petriashvili, Nikoloz",
+        "fed": "GEO",
+        "rating": 2522
+      },
+      {
+        "id": "30938279",
+        "name": "Putnam, Liam",
+        "fed": "USA",
+        "rating": 2499
+      },
+      {
+        "id": "14210495",
+        "name": "Suyarov, Mukhammadzokhid",
+        "fed": "UZB",
+        "rating": 2540
+      },
+      {
+        "id": "34544712",
+        "name": "Tarhan, Adar",
+        "fed": "TUR",
+        "rating": 2480
+      },
+      {
+        "id": "8611572",
+        "name": "Xu, Zhihang",
+        "fed": "CHN",
+        "rating": 2482
+      },
+      {
+        "id": "8609497",
+        "name": "Zhao, Yuanhe",
+        "fed": "CHN",
+        "rating": 2439
+      }
+    ],
+    "transfers": [
+      {
+        "id": "12510130",
+        "name": "Idani, Pouya",
+        "from": "IRI",
+        "to": "FRA"
+      }
+    ],
     "deaths": [
+      {
+        "id": "14100053",
+        "name": "Eingorn, Vereslav S",
+        "fed": "UKR",
+        "deathYear": null,
+        "note": "newly absent from FIDE list this period — unconfirmed, needs manual verification"
+      },
+      {
+        "id": "2900220",
+        "name": "Spassov, Liuben",
+        "fed": "BUL",
+        "deathYear": null,
+        "note": "newly absent from FIDE list this period — unconfirmed, needs manual verification"
+      },
       {
         "id": "4500059",
         "name": "Nei, Iivo",
@@ -18,7 +142,7 @@
         "note": "newly absent from FIDE list this period — unconfirmed, needs manual verification"
       }
     ],
-    "dropped_from_list_count": 255,
+    "dropped_from_list_count": 265,
     "photos_applied_from_approvals": 0,
     "photo_candidates_total": 4,
     "bio_backfill_attempted": 50
@@ -29,22 +153,22 @@
       "rating": 2823
     },
     {
-      "name": "Caruana, Fabiano",
-      "rating": 2792
-    },
-    {
       "name": "Nakamura, Hikaru",
       "rating": 2792
     },
     {
-      "name": "Sindarov, Javokhir",
-      "rating": 2777
+      "name": "Caruana, Fabiano",
+      "rating": 2789
     },
     {
-      "name": "Keymer, Vincent",
-      "rating": 2767
+      "name": "Sindarov, Javokhir",
+      "rating": 2778
+    },
+    {
+      "name": "So, Wesley",
+      "rating": 2774
     }
   ],
   "errors": [],
-  "run_at_utc": "2026-09-05T12:29:25.862856+00:00"
+  "run_at_utc": "2026-09-05T13:30:21.470802+00:00"
 }
