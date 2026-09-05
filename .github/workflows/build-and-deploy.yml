@@ -20,6 +20,7 @@ on:
       - "data/build_from_csv.py"
       - "data/build_pages.py"
       - "data/validate_roster.py"
+      - "data/stamp_assets.py"
       - "gm-dashboard/app.js"
       - "gm-dashboard/player.js"
       - "gm-dashboard/index.html"
@@ -67,11 +68,21 @@ jobs:
       - name: Build static pages
         run: python3 data/build_pages.py
 
+      # Derives each asset's ?v= query from a hash of its own contents.
+      # A hand-maintained version string broke the live site once already:
+      # index.html and app.js were both rewritten but the version string was
+      # not bumped, so browsers ran the previous cached app.js against the new
+      # markup and threw on missing elements. Deriving it from content means
+      # nobody has to remember.
+      - name: Stamp asset cache-busting hashes
+        run: python3 data/stamp_assets.py
+
       - name: Commit rebuilt data.json and pages
         run: |
           git config user.name  "gm-almanac-bot"
           git config user.email "actions@users.noreply.github.com"
-          git add gm-dashboard/data.json gm-dashboard/player gm-dashboard/sitemap.xml 2>/dev/null || true
+          git add gm-dashboard/data.json gm-dashboard/player gm-dashboard/sitemap.xml \
+                  gm-dashboard/index.html gm-dashboard/photo-review.html 2>/dev/null || true
           if git diff --cached --quiet; then
             echo "No build output changed."
           else
@@ -112,6 +123,19 @@ jobs:
           echo "built playerCount=$BUILT  live playerCount=$LIVE"
           if [ "$BUILT" != "$LIVE" ]; then
             echo "::error::Deploy verification failed — the live site reports $LIVE players but this build produced $BUILT. The upload may not have completed."
+            exit 1
+          fi
+
+          # Confirm the live html points at the app.js this build produced.
+          # If these disagree, visitors run stale cached JavaScript against
+          # fresh markup, which is exactly how the site broke on 5 Sep 2026.
+          WANT=$(grep -oE 'app\.js\?v=[a-f0-9]+' gm-dashboard/index.html | head -1)
+          GOT=$(curl -sS --max-time 30 \
+            "https://scfromor.com/chess/grandmaster_almanac/?cb=$(date +%s)" \
+            | grep -oE 'app\.js\?v=[a-f0-9]+' | head -1)
+          echo "built asset tag=$WANT  live asset tag=$GOT"
+          if [ -z "$GOT" ] || [ "$WANT" != "$GOT" ]; then
+            echo "::error::Deploy verification failed — live html references '$GOT' but this build produced '$WANT'. Visitors would run stale cached JavaScript."
             exit 1
           fi
           echo "Deploy verified."
