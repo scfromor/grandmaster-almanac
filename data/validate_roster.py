@@ -142,17 +142,31 @@ def main() -> int:
             if v and not v.startswith(("http://", "https://")):
                 errors.append(f"row {n} ({who}): {field} is not a URL: {v!r}")
 
-        # --- style radar ----------------------------------------------------
-        present = [r[f"style_{a}"] is not None for a in roster_io.STYLE_AXES]
-        if any(present) and not all(present):
-            errors.append(
-                f"row {n} ({who}): style axes are partially filled -- "
-                f"provide all six or leave all six blank"
-            )
-        for a in roster_io.STYLE_AXES:
-            v = r[f"style_{a}"]
-            if v is not None and not (0 <= v <= 100):
-                errors.append(f"row {n} ({who}): style_{a}={v} is outside 0-100")
+        # --- profile links ----------------------------------------------------
+        # Store a bare handle, never a URL. A pasted URL would otherwise be
+        # concatenated into the link template and produce a dead link that
+        # looks plausible in the CSV.
+        for col in roster_io.LINK_COLUMNS:
+            v = (r.get(col) or "").strip()
+            if not v:
+                continue
+            pattern = roster_io.LINK_PATTERNS.get(col)
+            if pattern and not re.match(pattern, v):
+                if col == "website":
+                    errors.append(
+                        f"row {n} ({who}): website={v!r} must be a full "
+                        f"http(s):// URL"
+                    )
+                elif v.startswith(("http://", "https://")) or "/" in v:
+                    errors.append(
+                        f"row {n} ({who}): {col}={v!r} looks like a URL -- "
+                        f"store only the handle (the site builds the URL)"
+                    )
+                else:
+                    errors.append(
+                        f"row {n} ({who}): {col}={v!r} is not a valid "
+                        f"{col} handle"
+                    )
 
     # --- whole-file sanity checks -----------------------------------------
     prev_count = None

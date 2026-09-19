@@ -38,14 +38,14 @@ Add one line at the end of the file. Only six values are actually required:
 A minimal valid row looks like this:
 
 ```
-1503014,"Carlsen, Magnus",NOR,M,GM,,1990,2004,false,,false,,,NOR,Tønsberg,,,,,,,,,,,
+1503014,"Carlsen, Magnus",NOR,M,GM,,1990,2004,false,,false,,,NOR,Tønsberg,NOR,https://upload.wikimedia.org/wikipedia/commons/thumb/1/1a/Magnus_Carlsen_in_2025.jpg/250px-Magnus_Carlsen_in_2025.jpg,,,,MagnusCarlsen,magnus-carlsen,DrNykterstein,52948,https://magnuscarlsen.com,MagnusCarlsen,magnus_carlsen,UCbdcpQ5uPPymv7Ea0nnFfOw,,magnuschess
 ```
 
 **If the name contains a comma — and it usually will — wrap it in double
 quotes.** `"Carlsen, Magnus"`. This is the single most common mistake.
 
-Leaving the six `style_*` columns blank is fine. That player will show no
-playstyle radar rather than a made-up one.
+Leaving the ten link columns blank is fine. That player simply shows no
+"Profiles & Links" box, rather than an empty one.
 
 ## Recording a death
 
@@ -108,15 +108,42 @@ deploy site**, click **Run workflow**, and tick **allow_shrink**.
 | `photoSource` | credit URL | |
 | `bio` | one paragraph | quote it if it has a comma |
 | `bioSource` | source URL | |
-| `style_aggressive` | 0–100 | blank = no radar |
-| `style_defense` | 0–100 | blank = no radar |
-| `style_endgame` | 0–100 | blank = no radar |
-| `style_opening` | 0–100 | blank = no radar |
-| `style_positional` | 0–100 | blank = no radar |
-| `style_tactical` | 0–100 | blank = no radar |
+| `chesscom` | `MagnusCarlsen` | handle only |
+| `chesscomPlayer` | `magnus-carlsen` | slug only |
+| `lichess` | `DrNykterstein` | handle only |
+| `chessgames` | `52948` | numeric id only |
+| `website` | `https://magnuscarlsen.com` | the **full** URL |
+| `x` | `MagnusCarlsen` | no `@` |
+| `instagram` | `magnus_carlsen` | no `@` |
+| `youtube` | `UCbdcpQ5uPPymv7Ea0nnFfOw` | channel id, or `@handle` |
+| `twitch` | `magnuscarlsen` | |
+| `facebook` | `magnuschess` | |
 
-The `style_*` columns are all-or-nothing: fill in all six or leave all six
-blank. A partial set is rejected.
+## Adding a link
+
+**Paste the handle, not the address.** `website` is the one exception: it
+takes the whole URL. Everywhere else the build assembles the address for you,
+so it stays correct if a platform changes its URL shape.
+
+| You found | You paste |
+| --- | --- |
+| `https://www.chess.com/member/MagnusCarlsen` | `MagnusCarlsen` |
+| `https://lichess.org/@/DrNykterstein` | `DrNykterstein` |
+| `https://x.com/MagnusCarlsen` | `MagnusCarlsen` |
+| `https://www.youtube.com/@GothamChess` | `@GothamChess` |
+| `https://www.chessgames.com/perl/chessplayer?pid=52948` | `52948` |
+
+If you paste a full URL by mistake, the validator stops the build and tells
+you which part to keep. Nothing is published until you fix it.
+
+Chess.com has two separate columns on purpose. `chesscom` is the player's own
+member account, which they control. `chesscomPlayer` is Chess.com's editorial
+page about them, which exists for many historical players who never held an
+account.
+
+The links were seeded automatically from Wikidata for 1,952 of the 2,164
+players. Adding one by hand is only needed for the rest, or when Wikidata is
+wrong. Your value always wins: the importer never overwrites a filled cell.
 
 ---
 

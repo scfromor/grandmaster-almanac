@@ -34,13 +34,19 @@ Usage:
 from __future__ import annotations
 
 import argparse
+import concurrent.futures as cf
 import csv
 import datetime as dt
 import io
 import json
 import re
+import socket
 import subprocess
 import sys
+import threading
+import time
+import urllib.error
+import urllib.parse
 import urllib.request
 import zipfile
 
@@ -188,10 +194,191 @@ def load_roster(src: str) -> list[dict]:
     return list(csv.DictReader(io.StringIO(text)))
 
 
+
+# ---------------------------------------------------------------------------
+# Profile-link checking
+# ---------------------------------------------------------------------------
+#
+# Only SIX of the ten link platforms can be checked from a server. The rest
+# answer identically for a real page and a nonsense one, so any "dead link"
+# we reported for them would be a coin toss. Measured from this sandbox with
+# a known-good and a known-bad URL for each platform:
+#
+#   chesscom        good 200   bad 404   -> usable
+#   chesscomPlayer  good 200   bad 404   -> usable
+#   chessgames      good 200   bad 404   -> usable
+#   lichess         good 200   bad 404   -> usable
+#   x               good 200   bad 404   -> usable
+#   website         good 200   bad DNS failure -> usable
+#
+#   facebook        good 400   bad 400   -> UNUSABLE (blocks all bots)
+#   instagram       good 200   bad 200   -> UNUSABLE (login wall answers 200)
+#   youtube         good 200   bad 200   -> UNUSABLE (consent page answers 200)
+#   twitch          good 200   bad 200   -> UNUSABLE (app shell answers 200)
+#
+# Facebook is the important one: every facebook.com request returns HTTP 400
+# to an automated client while the page is perfectly alive in a browser. A
+# naive checker reports all 69 Facebook links as dead, every month, forever.
+# We never flag those four platforms — we report them as unchecked instead.
+
+CHECKABLE = ("chesscom", "chesscomPlayer", "chessgames", "lichess", "x", "website")
+UNCHECKABLE = {
+    "facebook": "returns HTTP 400 to all automated requests",
+    "instagram": "login wall answers 200 for missing profiles",
+    "youtube": "consent page answers 200 for missing channels",
+    "twitch": "app shell answers 200 for missing channels",
+}
+
+LINK_TEMPLATES = {
+    "chesscom": "https://www.chess.com/member/{}",
+    "chesscomPlayer": "https://www.chess.com/players/{}",
+    "chessgames": "https://www.chessgames.com/perl/chessplayer?pid={}",
+    "lichess": "https://lichess.org/@/{}",
+    "x": "https://x.com/{}",
+}
+
+BROWSER_UA = (
+    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
+    "(KHTML, like Gecko) Chrome/124.0 Safari/537.36"
+)
+
+# Per month. A full pass over ~5,600 links in one run risks tripping rate
+# limits on Lichess and Chess.com, so we walk a rotating window instead and
+# cover everything over roughly eight months.
+SAMPLE_SIZE = 700
+
+
+def link_url(column: str, value: str) -> str:
+    value = (value or "").strip()
+    if not value:
+        return ""
+    if column == "website":
+        return value
+    return LINK_TEMPLATES[column].format(value)
+
+
+def probe(url: str, timeout: int = 20) -> tuple[str, str]:
+    """Return (verdict, detail). Verdict is 'alive', 'dead' or 'unknown'.
+
+    'unknown' is the safe default and covers rate limiting, server errors and
+    timeouts. Only an explicit 404/410, or a DNS failure on a personal
+    website, is ever treated as dead.
+    """
+    headers = {
+        "User-Agent": BROWSER_UA,
+        "Accept": "text/html,application/xhtml+xml,*/*;q=0.8",
+        "Accept-Language": "en-US,en;q=0.9",
+    }
+    for method in ("HEAD", "GET"):
+        req = urllib.request.Request(url, method=method, headers=headers)
+        try:
+            with urllib.request.urlopen(req, timeout=timeout) as resp:
+                return "alive", f"{resp.status}"
+        except urllib.error.HTTPError as e:
+            # Some servers reject HEAD but serve GET, so retry before judging.
+            if method == "HEAD" and e.code in (400, 403, 405, 501):
+                continue
+            if e.code in (404, 410):
+                return "dead", f"HTTP {e.code}"
+            if e.code == 429:
+                return "unknown", "rate limited (HTTP 429)"
+            return "unknown", f"HTTP {e.code}"
+        except urllib.error.URLError as e:
+            reason = getattr(e, "reason", e)
+            if isinstance(reason, socket.gaierror):
+                return "dead", "domain does not resolve"
+            if method == "HEAD":
+                continue
+            return "unknown", f"{type(reason).__name__}"
+        except Exception as e:  # noqa: BLE001
+            if method == "HEAD":
+                continue
+            return "unknown", f"{type(e).__name__}"
+    return "unknown", "no response"
+
+
+def check_links(roster: list[dict], today: dt.date,
+                warnings: list[str], sample_size: int = SAMPLE_SIZE) -> dict:
+    targets = []
+    unchecked_counts = {k: 0 for k in UNCHECKABLE}
+    for r in roster:
+        for col in UNCHECKABLE:
+            if (r.get(col) or "").strip():
+                unchecked_counts[col] += 1
+        for col in CHECKABLE:
+            url = link_url(col, r.get(col, ""))
+            if url:
+                targets.append({"id": r.get("id", ""), "name": r.get("name", ""),
+                                "column": col, "url": url})
+
+    total = len(targets)
+    if not total:
+        return {"checked": 0, "total_links": 0, "dead": [], "unchecked": unchecked_counts}
+
+    # Deterministic rotating window: the slice advances every month and wraps,
+    # so every link is eventually visited without ever checking all of them at
+    # once. Sorting first keeps the walk stable between runs.
+    targets.sort(key=lambda t: (t["id"], t["column"]))
+    month_index = today.year * 12 + today.month
+    start = (month_index * sample_size) % total
+    window = [targets[(start + i) % total] for i in range(min(sample_size, total))]
+
+    lock = threading.Lock()
+    last_hit: dict[str, float] = {}
+
+    def polite(target):
+        host = urllib.parse.urlsplit(target["url"]).netloc
+        with lock:
+            wait = last_hit.get(host, 0.0) + 0.6 - time.monotonic()
+            if wait > 0:
+                time.sleep(wait)
+            last_hit[host] = time.monotonic()
+        verdict, detail = probe(target["url"])
+        return target, verdict, detail
+
+    suspects, rate_limited, unknown = [], 0, 0
+    with cf.ThreadPoolExecutor(max_workers=8) as pool:
+        for target, verdict, detail in pool.map(polite, window):
+            if verdict == "dead":
+                suspects.append((target, detail))
+            elif verdict == "unknown":
+                unknown += 1
+                if "429" in detail:
+                    rate_limited += 1
+
+    # Second pass. A single 404 can come from a blip or a redirect loop, and a
+    # false "this link is dead" costs him a pointless manual check. Anything
+    # reported has failed twice, a few seconds apart.
+    dead = []
+    for target, first_detail in suspects:
+        time.sleep(1.5)
+        verdict, detail = probe(target["url"])
+        if verdict == "dead":
+            dead.append({**target, "status": detail})
+    dead.sort(key=lambda d: (d["column"], d["name"]))
+
+    if rate_limited:
+        warnings.append(
+            f"{rate_limited} link checks hit a rate limit and were skipped, not flagged."
+        )
+    return {
+        "checked": len(window),
+        "total_links": total,
+        "window_start": start,
+        "dead": dead,
+        "rechecked": len(suspects),
+        "inconclusive": unknown,
+        "unchecked": unchecked_counts,
+        "unchecked_reasons": UNCHECKABLE,
+    }
+
+
 def main() -> int:
     ap = argparse.ArgumentParser()
     ap.add_argument("--roster", default=RAW_ROSTER)
     ap.add_argument("--period", default=None)
+    ap.add_argument("--links", type=int, default=SAMPLE_SIZE,
+                    help="How many profile links to check. 0 disables the check.")
     args = ap.parse_args()
 
     warnings: list[str] = []
@@ -200,6 +387,18 @@ def main() -> int:
     try:
         roster = load_roster(args.roster)
         by_id = {r["id"].strip(): r for r in roster if r.get("id", "").strip()}
+
+        # Run this FIRST and independently of FIDE. The FIDE download is the
+        # fragile part of this script; the link check needs none of it, so a
+        # failed title-list fetch must not also cost him the link report.
+        link_report: dict = {"checked": 0, "skipped": "disabled"}
+        if args.links > 0:
+            try:
+                link_report = check_links(roster, dt.date.today(), warnings,
+                                          sample_size=args.links)
+            except Exception as e:  # noqa: BLE001
+                link_report = {"checked": 0, "error": f"{type(e).__name__}: {e}"}
+                warnings.append(f"Link check failed ({type(e).__name__}).")
 
         periods = [args.period.lower()] if args.period else candidate_periods(dt.date.today())
         zip_bytes = source = used = None
@@ -219,8 +418,9 @@ def main() -> int:
                 "Could not download the FIDE title list from FIDE directly or "
                 "from the Internet Archive."
             )
+            result["link_check"] = link_report
             result["warnings"] = warnings
-            print(json.dumps(result, indent=2))
+            print(json.dumps(result, indent=2, ensure_ascii=False))
             return 1
 
         fide_rows, period = parse_fide(zip_bytes)
@@ -274,6 +474,7 @@ def main() -> int:
             "missing": missing,
             "fed_changes": fed_changes,
             "title_lost": title_lost,
+            "link_check": link_report,
             "warnings": warnings,
         })
         print(json.dumps(result, indent=2, ensure_ascii=False))

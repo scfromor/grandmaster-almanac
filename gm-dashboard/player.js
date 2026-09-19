@@ -2,13 +2,13 @@
  *
  * Reads the FIDE ID from the containing <article data-fide-id="..."> that
  * build_pages.py stamps into every player/<id>.html, fetches the live data.json
- * from the CDN (with local fallback), and hydrates the playstyle radar chart
- * and share-card that couldn't be prerendered.
+ * from the CDN (with local fallback), and builds the share card that cannot be
+ * prerendered.
  *
- * Server-rendered HTML in player/<id>.html already provides the profile head
- * and stat tiles — those don't need re-rendering. We ONLY paint the radar chart
- * and wire up the share button. If Chart.js fails to load or the fetch fails,
- * the static content still renders fine.
+ * Server-rendered HTML in player/<id>.html already provides the profile head,
+ * the stat tiles and the profile links — none of that needs re-rendering, and
+ * the links in particular must work with JavaScript switched off. We ONLY build
+ * the share card here. If the fetch fails, the static content still renders.
  */
 (() => {
   const REMOTE_DATA_URL = 'https://cdn.jsdelivr.net/gh/scfromor/grandmaster-almanac@master/gm-dashboard/data.json';
@@ -24,15 +24,12 @@
   let theme = matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
   const SUN = `<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="4.5"/><path d="M12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M2 12h2M20 12h2M4.93 19.07l1.41-1.41M17.66 6.34l1.41-1.41"/></svg>`;
   const MOON = `<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/></svg>`;
-  let radarChart = null;
   function applyTheme() {
     root.setAttribute('data-theme', theme);
     if (themeToggle) {
       themeToggle.innerHTML = theme === 'dark' ? SUN : MOON;
       themeToggle.setAttribute('aria-label', `Switch to ${theme === 'dark' ? 'light' : 'dark'} mode`);
     }
-    // Re-paint the radar chart when theme changes so grid/tick colors match
-    if (window.__loadedPlayer) hydrate(window.__loadedPlayer);
   }
   if (themeToggle) {
     themeToggle.addEventListener('click', () => {
@@ -87,51 +84,10 @@
     return String(s).replace(/[&<>"']/g, (c) => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
   }
 
-  function chartColors() {
-    const styles = getComputedStyle(document.documentElement);
-    return {
-      line: styles.getPropertyValue('--data-line').trim() || '#114d3a',
-      area: styles.getPropertyValue('--data-area').trim() || 'rgba(17,77,58,0.15)',
-      grid: styles.getPropertyValue('--data-grid').trim() || '#d8d1bb',
-      text: styles.getPropertyValue('--text').trim() || '#1d2520',
-      muted: styles.getPropertyValue('--text-muted').trim() || '#6b6f63',
-      primary: styles.getPropertyValue('--primary').trim() || '#114d3a',
-    };
-  }
-
-  // A player may ship with an EMPTY style object (style axes are static data now
-  // and are left blank for players added after the ratings removal).
-  function hasStyle(p) {
-    const st = p && p.style;
-    if (!st) return false;
-    return ['aggressive','positional','tactical','endgame','opening','defense']
-      .some((k) => typeof st[k] === 'number');
-  }
-
-  // Returns the dominant playstyle label, or '' when the player has no style data.
-  function styleLabel(p) {
-    if (!hasStyle(p)) return '';
-    const style = p.style;
-    const axes = [
-      { k: 'aggressive', label: 'Aggressive Attacker' },
-      { k: 'positional', label: 'Positional Player' },
-      { k: 'tactical', label: 'Tactical Threat' },
-      { k: 'endgame', label: 'Endgame Specialist' },
-      { k: 'opening', label: 'Opening Theorist' },
-      { k: 'defense', label: 'Resilient Defender' },
-    ];
-    let top = null; let topV = -1;
-    for (const a of axes) {
-      if (typeof style[a.k] === 'number' && style[a.k] > topV) { topV = style[a.k]; top = a; }
-    }
-    return top ? top.label : '';
-  }
-
   function generateTagline(p) {
     const parts = ['Grandmaster'];
     if (p.fedName) parts.push(p.fedName);
-    const sl = styleLabel(p);
-    if (sl) parts.push(sl);
+    if (p.gmYear) parts.push(`GM ${p.gmYear}`);
     if (p.age != null && p.age < 20) parts.push('Prodigy');
     else if (p.age != null && p.age >= 60) parts.push('Veteran');
     return parts.slice(0, 3).join(' · ');
@@ -160,8 +116,8 @@
               <div class="sc-stat-value">${p.gmYear ?? '—'}</div>
             </div>
             <div class="sc-stat">
-              <div class="sc-stat-label">Style</div>
-              <div class="sc-stat-value" style="font-size:16px;line-height:1.1">${escapeHtml(styleLabel(p) || '—')}</div>
+              <div class="sc-stat-label">Federation</div>
+              <div class="sc-stat-value">${escapeHtml(p.fed || '—')}</div>
             </div>
           </div>
         </div>
@@ -212,48 +168,9 @@
   }
 
   function hydrate(p) {
-    const c = chartColors();
-    if (radarChart) { radarChart.destroy(); radarChart = null; }
-
-    // ===== Playstyle radar =====
-    // Players with an empty style object get no chart at all — build_pages.py
-    // omits the canvas for them, so this simply no-ops.
-    const radarCanvas = document.getElementById('radarChart');
-    if (radarCanvas && hasStyle(p) && window.Chart) {
-      const s = p.style;
-      radarChart = new Chart(radarCanvas, {
-        type: 'radar',
-        data: {
-          labels: ['Aggressive', 'Positional', 'Tactical', 'Endgame', 'Opening Prep', 'Defense'],
-          datasets: [{
-            label: 'Playstyle',
-            data: [s.aggressive, s.positional, s.tactical, s.endgame, s.opening, s.defense],
-            borderColor: c.line,
-            backgroundColor: c.area,
-            borderWidth: 2,
-            pointBackgroundColor: c.line,
-            pointRadius: 3,
-          }],
-        },
-        options: {
-          responsive: true,
-          maintainAspectRatio: false,
-          animation: { duration: 500 },
-          plugins: { legend: { display: false } },
-          scales: {
-            r: {
-              min: 0, max: 100,
-              angleLines: { color: c.grid },
-              grid: { color: c.grid },
-              pointLabels: { color: c.muted, font: { size: 11, weight: '500' } },
-              ticks: { display: false, stepSize: 25 },
-            },
-          },
-        },
-      });
-    }
-
     // ===== Share card =====
+    // The profile links are already in the served HTML, so nothing here needs
+    // to touch them.
     const shareHost = document.getElementById('shareCard');
     if (shareHost) shareHost.innerHTML = shareCardHTML(p);
     const btn = document.getElementById('downloadShare');

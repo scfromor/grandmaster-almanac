@@ -16,7 +16,7 @@ grandmaster at `gm-dashboard/player/<FIDE_ID>.html`, containing:
   * Server-rendered profile facts (name, federation, birth, GM title year,
     status) so the crawler sees content even without executing JS.
   * A boot script (`player.js`) that hydrates the page with the same
-    Chart.js playstyle radar and share-card export as the modal, by re-reading
+    share-card export as the modal, by re-reading
     the FIDE ID from the URL.
 
 Also emits `gm-dashboard/sitemap.xml` covering the index + all player pages.
@@ -66,35 +66,6 @@ def esc(v) -> str:
     return html.escape(str(v), quote=True)
 
 
-STYLE_AXES = [
-    ("aggressive", "Aggressive Attacker"),
-    ("positional", "Positional Player"),
-    ("tactical", "Tactical Threat"),
-    ("endgame", "Endgame Specialist"),
-    ("opening", "Opening Theorist"),
-    ("defense", "Resilient Defender"),
-]
-
-
-def has_style(p: dict) -> bool:
-    """A player may have an EMPTY style object — then no radar is rendered."""
-    style = p.get("style") or {}
-    return any(isinstance(style.get(k), (int, float)) for k, _ in STYLE_AXES)
-
-
-def style_label(p: dict) -> str:
-    """Dominant playstyle axis label, or "" when the player has no style data."""
-    if not has_style(p):
-        return ""
-    style = p["style"]
-    best_label, best_value = "", None
-    for key, label in STYLE_AXES:
-        v = style.get(key)
-        if isinstance(v, (int, float)) and (best_value is None or v > best_value):
-            best_value, best_label = v, label
-    return best_label
-
-
 def status_label(p: dict) -> str:
     if p.get("revoked"):
         yr = p.get("revokedYear")
@@ -123,7 +94,7 @@ def meta_description(p: dict) -> str:
     else:
         parts.append("\u2014 career profile.")
     parts.append(
-        "Biography, playstyle radar, and shareable career card on the "
+        "Biography, profile links, and shareable career card on the "
         "Grandmaster Almanac."
     )
     return " ".join(parts)
@@ -287,12 +258,12 @@ PAGE_TEMPLATE = """<!doctype html>
             <div class="stat"><div class="stat-label">Federation</div><div class="stat-value">{fed_code}</div></div>
             <div class="stat"><div class="stat-label">{born_label}</div><div class="stat-value">{born_value}</div></div>
             <div class="stat"><div class="stat-label">GM Title</div><div class="stat-value">{gm_year}</div></div>
-            <div class="stat"><div class="stat-label">Playstyle</div><div class="stat-value" style="font-size:16px;line-height:1.2">{style_label}</div></div>
+            <div class="stat"><div class="stat-label">FIDE ID</div><div class="stat-value">{fide_id}</div></div>
           </div>
 
-          <!-- The radar chart is hydrated by player.js on load. It is omitted
-               entirely for players with an empty style object. -->
-          {radar_block}
+          <!-- Profile links are rendered server-side so they work with
+               JavaScript disabled and are visible to search engines. -->
+          {links_block}
 
           <details class="share-section" id="shareDetails">
             <summary class="share-summary">
@@ -316,14 +287,13 @@ PAGE_TEMPLATE = """<!doctype html>
           <p class="note">
             <strong>About the data.</strong> The roster is hand-maintained: federation, birth details,
             GM title year, and status come from a curated dataset rather than any live feed.
-            Playstyle radar values are editorial estimates and are left blank for players without them.
+            Profile links are collected from Wikidata; about one player in ten has none on record.
             See the <a href="../">Grandmaster Almanac directory</a> for the full dataset and filters.
           </p>
         </div>
       </article>
     </main>
 
-    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.4/dist/chart.umd.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/html-to-image@1.11.11/dist/html-to-image.min.js"></script>
     <script src="../player.js"></script>
   </body>
@@ -331,10 +301,17 @@ PAGE_TEMPLATE = """<!doctype html>
 """
 
 
-RADAR_BLOCK = """<div class="profile-body" id="profileBody">
-            <div class="chart-card">
-              <div class="chart-title">Playstyle Radar<span class="est-badge" title="Playstyle axes (Aggressive, Positional, Tactical, Endgame, Opening Prep, Defense) are editorial estimates, not measured from game data.">Estimated</span></div>
-              <div class="chart-box"><canvas id="radarChart"></canvas></div>
+# Populated from data.json in main(). Kept as a module global so the page
+# builder and the front end use the one list the build emitted, rather than
+# each keeping its own copy that could drift.
+LINK_LABELS: dict[str, str] = {}
+
+
+LINKS_BLOCK = """<div class="profile-body" id="profileBody">
+            <div class="links-card">
+              <div class="links-title">Profiles &amp; Links</div>
+              <div class="link-chips">{chips}</div>
+              <div class="links-note">Links are collected from Wikidata and are not checked continuously.</div>
             </div>
           </div>"""
 
@@ -439,6 +416,36 @@ def build_json_ld(p: dict, canonical: str) -> str:
     return json.dumps(obj, indent=2, ensure_ascii=False)
 
 
+
+def build_links_block(p: dict) -> str:
+    """Server-render the profile links.
+
+    These are plain <a> tags in the served HTML rather than something the
+    browser assembles, so they survive JavaScript being switched off and are
+    visible to search engines. data.json already carries finished URLs as
+    [key, url] pairs, so nothing is re-derived here.
+
+    rel="nofollow" is deliberate: we are pointing at 5,800 third-party
+    profiles collected from Wikidata and do not want to vouch for them.
+    """
+    links = p.get("links") or []
+    if not links:
+        return ""
+    labels = LINK_LABELS
+    chips = []
+    for key, url in links:
+        label = labels.get(key, key)
+        chips.append(
+            f'<a class="link-chip link-{esc(key)}" href="{esc(url)}" '
+            f'target="_blank" rel="noopener noreferrer nofollow">{esc(label)}'
+            f'<svg class="link-chip-out" width="11" height="11" viewBox="0 0 24 24" '
+            f'fill="none" stroke="currentColor" stroke-width="2.5" '
+            f'stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">'
+            f'<path d="M7 17 17 7M9 7h8v8"/></svg></a>'
+        )
+    return LINKS_BLOCK.format(chips="".join(chips))
+
+
 def build_bio_block(p: dict) -> str:
     """Optional Wikipedia bio + photo attribution block for the player card.
 
@@ -486,8 +493,8 @@ def render_page(p: dict) -> str:
     og_image_tag = ""
     if p.get("photo"):
         og_image_tag = f'<meta property="og:image" content="{esc(p["photo"])}" />'
-    # Empty style object -> no canvas at all, rather than a broken chart box.
-    radar_block = RADAR_BLOCK if has_style(p) else ""
+    # No known links -> render nothing, rather than an empty "Links" box.
+    links_block = build_links_block(p)
     born_label = "Lifespan" if p.get("deceased") else "Born"
     if p.get("deceased") and p.get("deathYear") and p.get("bday"):
         born_value = f"{p['bday']} \u2013 {p['deathYear']}"
@@ -511,8 +518,7 @@ def render_page(p: dict) -> str:
         born_label=born_label,
         born_value=esc(born_value),
         gm_year=esc(p.get("gmYear") if p.get("gmYear") else "\u2014"),
-        style_label=esc(style_label(p) or "\u2014"),
-        radar_block=radar_block,
+        links_block=links_block,
     )
 
 
@@ -546,6 +552,7 @@ def main() -> None:
     with open(DATA_JSON, "r", encoding="utf-8") as f:
         data = json.load(f)
     players = data.get("players", [])
+    LINK_LABELS.update(data.get("linkLabels", {}))
     if not players:
         print("ERROR: No players in data.json", file=sys.stderr)
         sys.exit(1)

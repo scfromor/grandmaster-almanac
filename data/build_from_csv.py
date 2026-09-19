@@ -48,9 +48,13 @@ def build() -> dict:
             end = r["deathYear"] if (r["deceased"] and r["deathYear"]) else this_year
             age = end - r["bday"]
 
-        style = {}
-        if r["style_aggressive"] is not None:
-            style = {a: r[f"style_{a}"] for a in roster_io.STYLE_AXES}
+        # Build the finished URLs here rather than in the browser, so the page
+        # builder and the front end can never disagree about a handle.
+        #
+        # Emitted as compact [key, url] pairs. Repeating the label and the bare
+        # handle on all ~5,800 links added about 280 KB to a file every visitor
+        # downloads; the labels ship once in `linkLabels` instead.
+        links = [[x["key"], x["url"]] for x in roster_io.links_for(r)]
 
         players.append({
             "id": r["id"],
@@ -79,7 +83,7 @@ def build() -> dict:
             "bioSource": r["bioSource"],
             "fedHistory": fed_history,
             "fedHistoryNames": [fed_names.get(c, c) for c in fed_history],
-            "style": style,
+            "links": links,
         })
 
     players.sort(key=lambda p: (p["name"] or "").lower())
@@ -97,6 +101,11 @@ def build() -> dict:
         "players": players,
         "feds": sorted({p["fed"] for p in players}),
         "fedNames": {c: fed_names.get(c, c) for c in present},
+        # Display names for the link keys, shipped once instead of on every
+        # link. Order here is the order links render in.
+        "linkLabels": {
+            c: roster_io.LINK_TEMPLATES[c][0] for c in roster_io.LINK_COLUMNS
+        },
     }
 
 
@@ -112,7 +121,8 @@ def main() -> int:
     print(f"  federations: {len(data['feds'])}")
     print(f"  with photo : {sum(1 for p in data['players'] if p['photo'])}")
     print(f"  with bio   : {sum(1 for p in data['players'] if p['bio'])}")
-    print(f"  with radar : {sum(1 for p in data['players'] if p['style'])}")
+    print(f"  with links : {sum(1 for p in data['players'] if p['links'])} "
+          f"({sum(len(p['links']) for p in data['players'])} links)")
     print(f"  size       : {size / 1024:.0f} KB")
     return 0
 

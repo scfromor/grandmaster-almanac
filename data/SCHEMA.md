@@ -35,17 +35,41 @@ triggers a rebuild and deploy. Nothing fetches FIDE at build time. Ever.
 | `bio` | string | no | One or two sentences. Quote if it contains commas. |
 | `bioSource` | URL | no | Attribution link for the bio. |
 | `fedHistory` | pipe-separated codes | no | e.g. `RUS\|FID\|RUS`. Oldest first. |
-| `style_aggressive` | int 15–95 | no | Playstyle radar axis. |
-| `style_defense` | int 15–95 | no | |
-| `style_endgame` | int 15–95 | no | |
-| `style_opening` | int 15–95 | no | |
-| `style_positional` | int 15–95 | no | |
-| `style_tactical` | int 15–95 | no | |
+| `chesscom` | handle | no | Chess.com member account. |
+| `chesscomPlayer` | slug | no | Chess.com editorial player page. |
+| `lichess` | handle | no | Lichess username. |
+| `chessgames` | numeric id | no | Chessgames.com player id. |
+| `website` | full URL | no | Personal or official site. Store the whole URL. |
+| `x` | handle | no | X / Twitter, without the `@`. |
+| `instagram` | handle | no | |
+| `youtube` | channel id or handle | no | `UC…` channel id, or `@handle`. |
+| `twitch` | handle | no | |
+| `facebook` | page name | no | The part after `facebook.com/`. |
 
-Style axes were originally estimated from rating. That model is gone, so the
-values are now **static data**: they are preserved as-is for existing players
-and left blank for anyone added later. A player with blank style renders
-without a radar chart rather than with a broken one.
+### Link columns: store handles, not URLs
+
+Every link column except `website` holds a **bare handle or id**, never a
+pasted URL. The build assembles the URL from a fixed template, so a stored
+handle stays correct if a platform changes its URL shape, and the same value
+cannot be written two different ways.
+
+| Column | URL built |
+| --- | --- |
+| `chesscom` | `https://www.chess.com/member/{handle}` |
+| `chesscomPlayer` | `https://www.chess.com/players/{slug}` |
+| `lichess` | `https://lichess.org/@/{handle}` |
+| `chessgames` | `https://www.chessgames.com/perl/chessplayer?pid={id}` |
+| `website` | used exactly as stored |
+| `x` | `https://x.com/{handle}` |
+| `instagram` | `https://www.instagram.com/{handle}/` |
+| `youtube` | `https://www.youtube.com/channel/{id}` for `UC…`, else `https://www.youtube.com/{@handle}` |
+| `twitch` | `https://www.twitch.tv/{handle}` |
+| `facebook` | `https://www.facebook.com/{name}` |
+
+`validate_roster.py` rejects a pasted URL in a handle column and tells you
+which part to keep. Links were seeded from Wikidata (joined on property
+P1440, the FIDE player id) and cover 1,952 of 2,164 players. The remaining
+212 players show no links section at all rather than an empty box.
 
 ## `gm-dashboard/data.json` (build output — do not edit by hand)
 
@@ -80,19 +104,24 @@ without a radar chart rather than with a broken one.
       "bio": "...",
       "fedHistory": ["NOR"],
       "fedHistoryNames": ["Norway"],    // derived
-      "style": { "aggressive": 78, "defense": 85, "endgame": 95,
-                 "opening": 70, "positional": 92, "tactical": 88 }
+      // Finished URLs as compact [key, url] pairs — the frontend never
+      // rebuilds them. Empty array when the player has no links.
+      "links": [["chesscom", "https://www.chess.com/member/MagnusCarlsen"],
+                ["lichess",  "https://lichess.org/@/DrNykterstein"]]
     }
   ],
   "feds": ["NOR", "USA", ...],          // sorted unique federation codes present
-  "fedNames": { "NOR": "Norway", ... }
+  "fedNames": { "NOR": "Norway", ... },
+  // One shared label map instead of repeating labels on 5,804 links.
+  "linkLabels": { "chesscom": "Chess.com", "lichess": "Lichess", ... }
 }
 ```
 
 ### Fields deliberately REMOVED
 
-`ratingPeriod`, `historyAxis`, and per-player `rating`, `peak`, `history`,
-`games`, `active`. Nothing in the frontend may reference these. A player's
+`ratingPeriod`, `historyAxis`, per-player `rating`, `peak`, `history`,
+`games`, `active`, and `style` (the playstyle radar, removed with its six
+`style_*` columns). Nothing in the frontend may reference these. A player's
 strength is no longer represented anywhere on the site.
 
 `active` is replaced by `deceased` and `revoked`, which are facts about the

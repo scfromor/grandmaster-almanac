@@ -83,7 +83,7 @@ def main() -> int:
     with open(os.path.join(HERE, "fed_names.json"), "w", encoding="utf-8") as fh:
         json.dump(fed_names, fh, ensure_ascii=False, indent=2, sort_keys=True)
 
-    styled = sum(1 for r in records if r["style_aggressive"] is not None)
+    styled = 0  # style columns removed; kept as 0 so the summary line still prints
     print(f"wrote {roster_io.ROSTER_CSV}: {len(records)} players")
     print(f"  with style radar : {styled}")
     print(f"  deceased         : {sum(1 for r in records if r['deceased'])}")

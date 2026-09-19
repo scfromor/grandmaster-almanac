@@ -9,7 +9,6 @@
     page: 1,
     pageSize: 50,
     activeId: null,
-    radarChart: null,
   };
 
   // ===== FIDE federation code -> ISO 3166-1 alpha-2 (for SVG flags via flagcdn.com) =====
@@ -137,13 +136,22 @@
     syncFromHash();
   }
 
-  // Helper: a player may ship with an EMPTY style object (style axes are static
-  // data now, and are left blank for players added after the ratings removal).
-  function hasStyle(p) {
-    const s = p && p.style;
-    if (!s) return false;
-    return ['aggressive','positional','tactical','endgame','opening','defense']
-      .some((k) => typeof s[k] === 'number');
+  // Links arrive from data.json as compact [key, url] pairs, already ordered
+  // and already turned into full URLs by the build. The browser only has to
+  // look up a display name, so a handle can never be interpreted two ways.
+  function linkChips(p) {
+    const links = (p && p.links) || [];
+    if (!links.length) return '';
+    const labels = state.raw.linkLabels || {};
+    return links.map(([key, url]) => {
+      const label = labels[key] || key;
+      return `<a class="link-chip link-${escapeHtml(key)}" href="${escapeHtml(url)}"`
+        + ` target="_blank" rel="noopener noreferrer nofollow">`
+        + `${escapeHtml(label)}`
+        + `<svg class="link-chip-out" width="11" height="11" viewBox="0 0 24 24" fill="none"`
+        + ` stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"`
+        + ` aria-hidden="true"><path d="M7 17 17 7M9 7h8v8"/></svg></a>`;
+    }).join('');
   }
 
   // ===== Populate selects =====
@@ -414,9 +422,19 @@
       { label: 'Status',                   val: (p) => p.revoked ? (p.revokedYear ? `Title Revoked (${p.revokedYear})` : 'Title Revoked') : p.deceased ? (p.deathYear ? `Deceased (${p.deathYear})` : 'Deceased') : 'Living' },
       { label: 'Title Revoked Year',       val: (p) => p.revokedYear ?? '' },
       { label: 'Title Revoked Reason',     val: (p) => p.revokedReason ?? '' },
-      { label: 'Playstyle',                val: (p) => styleLabel(p) },
       { label: 'FIDE ID',                  val: (p) => p.id },
     ];
+    // One column per platform, so the export stays a usable dataset rather
+    // than a single cell with ten URLs crammed into it.
+    for (const [key, label] of Object.entries(state.raw.linkLabels || {})) {
+      cols.push({
+        label: label + ' URL',
+        val: (p) => {
+          const hit = (p.links || []).find(([k]) => k === key);
+          return hit ? hit[1] : '';
+        },
+      });
+    }
     const rows = state.filtered;
     const header = cols.map((c) => csvCell(c.label)).join(',');
     const body = rows.map((p, i) => cols.map((c) => csvCell(c.val(p, i))).join(',')).join('\n');
@@ -453,7 +471,6 @@
     modalRoot.hidden = true;
     state.activeId = null;
     document.body.style.overflow = '';
-    if (state.radarChart) { state.radarChart.destroy(); state.radarChart = null; }
     if (location.hash.startsWith('#p-')) {
       history.pushState(null, '', location.pathname + location.search);
     }
@@ -474,73 +491,16 @@
       modalRoot.hidden = true;
       state.activeId = null;
       document.body.style.overflow = '';
-      if (state.radarChart) { state.radarChart.destroy(); state.radarChart = null; }
-    }
-  }
-
-  function chartColors() {
-    const styles = getComputedStyle(document.documentElement);
-    return {
-      line: styles.getPropertyValue('--data-line').trim() || '#114d3a',
-      area: styles.getPropertyValue('--data-area').trim() || 'rgba(17,77,58,0.15)',
-      grid: styles.getPropertyValue('--data-grid').trim() || '#d8d1bb',
-      text: styles.getPropertyValue('--text').trim() || '#1d2520',
-      muted: styles.getPropertyValue('--text-muted').trim() || '#6b6f63',
-      primary: styles.getPropertyValue('--primary').trim() || '#114d3a',
-    };
+      }
   }
 
   function renderProfile(id, animate) {
     const p = state.raw.players.find((x) => x.id === id);
     if (!p) return;
-    const c = chartColors();
     document.getElementById('modalContent').innerHTML = profileTemplate(p);
-
-    if (state.radarChart) state.radarChart.destroy();
-    state.radarChart = null;
-
-    // Radar chart — skipped entirely when the player has no style data
-    // (profileTemplate omits the canvas in that case).
-    const radarCanvas = document.getElementById('radarChart');
-    if (!radarCanvas || !hasStyle(p)) {
-      document.getElementById('downloadShare').addEventListener('click', () => downloadCard(p));
-      return;
-    }
-    const s = p.style;
-    state.radarChart = new Chart(radarCanvas, {
-      type: 'radar',
-      data: {
-        labels: ['Aggressive', 'Positional', 'Tactical', 'Endgame', 'Opening Prep', 'Defense'],
-        datasets: [{
-          label: 'Playstyle',
-          data: [s.aggressive, s.positional, s.tactical, s.endgame, s.opening, s.defense],
-          borderColor: c.line,
-          backgroundColor: c.area,
-          borderWidth: 2,
-          pointBackgroundColor: c.line,
-          pointRadius: 3,
-        }],
-      },
-      options: {
-        responsive: true,
-        maintainAspectRatio: false,
-        animation: animate ? { duration: 500 } : false,
-        plugins: { legend: { display: false } },
-        scales: {
-          r: {
-            min: 0, max: 100,
-            angleLines: { color: c.grid },
-            grid: { color: c.grid },
-            pointLabels: { color: c.muted, font: { size: 11, weight: '500' } },
-            ticks: { display: false, stepSize: 25 },
-          },
-        },
-      },
-    });
-
-    // Wire share button
     document.getElementById('downloadShare').addEventListener('click', () => downloadCard(p));
   }
+
 
   function profileTemplate(p) {
     const initials = getInitials(p.name);
@@ -578,13 +538,15 @@
     const revokedNote = p.revoked && p.revokedReason
       ? `<div class="revoked-note"><strong>Title revoked${p.revokedYear ? ` (${p.revokedYear})` : ''}.</strong> ${escapeHtml(p.revokedReason)}</div>`
       : '';
-    // A player may have an EMPTY style object — render no canvas at all rather
-    // than a broken/empty chart box.
-    const radarSection = hasStyle(p) ? `
+    // Around one player in ten has no known profile anywhere. Render nothing
+    // at all for them rather than an empty box captioned "Links".
+    const chips = linkChips(p);
+    const linksSection = chips ? `
       <div class="profile-body">
-        <div class="chart-card">
-          <div class="chart-title">Playstyle Radar<span class="est-badge" title="Playstyle axes (Aggressive, Positional, Tactical, Endgame, Opening Prep, Defense) are editorial estimates, not measured from game data.">Estimated</span></div>
-          <div class="chart-box"><canvas id="radarChart"></canvas></div>
+        <div class="links-card">
+          <div class="links-title">Profiles &amp; Links</div>
+          <div class="link-chips">${chips}</div>
+          <div class="links-note">Links are collected from Wikidata and are not checked continuously.</div>
         </div>
       </div>` : '';
     const nonNote = p.fed === 'NON'
@@ -614,10 +576,10 @@
         <div class="stat"><div class="stat-label">Federation</div><div class="stat-value">${escapeHtml(p.fed || '—')}</div></div>
         <div class="stat"><div class="stat-label">${p.deceased ? 'Lifespan' : 'Born'}</div><div class="stat-value">${p.bday ?? '—'}${p.deceased && p.deathYear ? ` – ${p.deathYear}` : ''}</div></div>
         <div class="stat"><div class="stat-label">GM Title</div><div class="stat-value">${p.revoked && p.gmYear && p.revokedYear ? `<span class="gm-revoked">${p.gmYear} <span class="gm-arrow">→</span> ${p.revokedYear}</span>` : (p.gmYear ?? '—')}</div></div>
-        <div class="stat"><div class="stat-label">Playstyle</div><div class="stat-value" style="font-size:16px;line-height:1.2">${escapeHtml(styleLabel(p) || '—')}</div></div>
+        <div class="stat"><div class="stat-label">FIDE ID</div><div class="stat-value">${escapeHtml(p.id)}</div></div>
       </div>
 
-      ${radarSection}
+      ${linksSection}
 
       <details class="share-section" id="shareDetails">
         <summary class="share-summary">
@@ -663,8 +625,8 @@
               <div class="sc-stat-value">${p.gmYear ?? '—'}</div>
             </div>
             <div class="sc-stat">
-              <div class="sc-stat-label">Style</div>
-              <div class="sc-stat-value" style="font-size:16px;line-height:1.1">${escapeHtml(styleLabel(p) || '—')}</div>
+              <div class="sc-stat-label">Federation</div>
+              <div class="sc-stat-value">${escapeHtml(p.fed || '—')}</div>
             </div>
           </div>
         </div>
@@ -675,30 +637,10 @@
     `;
   }
 
-  // Returns the dominant playstyle label, or '' when the player has no style data.
-  function styleLabel(p) {
-    if (!hasStyle(p)) return '';
-    const style = p.style;
-    const axes = [
-      { k: 'aggressive', label: 'Aggressive Attacker' },
-      { k: 'positional', label: 'Positional Player' },
-      { k: 'tactical', label: 'Tactical Threat' },
-      { k: 'endgame', label: 'Endgame Specialist' },
-      { k: 'opening', label: 'Opening Theorist' },
-      { k: 'defense', label: 'Resilient Defender' },
-    ];
-    let top = null; let topV = -1;
-    for (const a of axes) {
-      if (typeof style[a.k] === 'number' && style[a.k] > topV) { topV = style[a.k]; top = a; }
-    }
-    return top ? top.label : '';
-  }
-
   function generateTagline(p) {
     const parts = ['Grandmaster'];
     if (p.fedName) parts.push(p.fedName);
-    const sl = styleLabel(p);
-    if (sl) parts.push(sl);
+    if (p.gmYear) parts.push(`GM ${p.gmYear}`);
     if (p.age != null && p.age < 20) parts.push('Prodigy');
     else if (p.age != null && p.age >= 60) parts.push('Veteran');
     return parts.slice(0, 3).join(' · ');
