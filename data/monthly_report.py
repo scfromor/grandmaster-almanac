@@ -242,10 +242,33 @@ BROWSER_UA = (
     "(KHTML, like Gecko) Chrome/124.0 Safari/537.36"
 )
 
-# Per month. A full pass over ~5,600 links in one run risks tripping rate
-# limits on Lichess and Chess.com, so we walk a rotating window instead and
-# cover everything over roughly eight months.
-SAMPLE_SIZE = 700
+# How many links of each platform to check per month.
+#
+# These are sized by measured rot rate, not by how many links exist. A full
+# audit of the whole set found:
+#
+#   website          18.3% dead   user-owned domain      -> rots
+#   lichess          16.7% dead   user-chosen handle     -> rots
+#   x                 8.2% dead   user-chosen handle     -> rots
+#   chesscom          3.2% dead   user-chosen handle     -> rots slowly
+#   chesscomPlayer    0.2% dead   site-assigned slug     -> stable
+#   chessgames        0.0% dead   site-assigned id       -> stable
+#
+# Handles people choose get renamed and abandoned; ids a site assigns do not.
+# The two stable platforms are also the two largest (3,862 of 5,585 links) and
+# the two that rate-limit hardest, so checking them in bulk burned most of the
+# monthly budget to find almost nothing. They now get a small canary sample
+# that would still catch a site-wide URL change, and the volatile platforms
+# get full or near-full coverage every month.
+PLATFORM_BUDGET = {
+    "website": 90,          # all of them
+    "x": 190,               # all of them
+    "lichess": 200,         # ~1.6 month cycle
+    "chesscom": 300,        # ~4 month cycle
+    "chesscomPlayer": 80,   # canary only
+    "chessgames": 80,       # canary only
+}
+SAMPLE_SIZE = sum(PLATFORM_BUDGET.values())
 
 
 def link_url(column: str, value: str) -> str:
@@ -315,21 +338,40 @@ def check_links(roster: list[dict], today: dt.date,
     if not total:
         return {"checked": 0, "total_links": 0, "dead": [], "unchecked": unchecked_counts}
 
-    # Deterministic rotating window: the slice advances every month and wraps,
-    # so every link is eventually visited without ever checking all of them at
-    # once. Sorting first keeps the walk stable between runs.
-    targets.sort(key=lambda t: (t["id"], t["column"]))
+    # Deterministic rotating window, taken PER PLATFORM so a big stable
+    # platform cannot crowd out a small volatile one. Each slice advances every
+    # month and wraps, so every link is eventually visited without ever
+    # checking all of them at once. Sorting first keeps the walk stable.
     month_index = today.year * 12 + today.month
-    start = (month_index * sample_size) % total
-    window = [targets[(start + i) % total] for i in range(min(sample_size, total))]
+    scale = sample_size / SAMPLE_SIZE if SAMPLE_SIZE else 1.0
+    window = []
+    for col, budget in PLATFORM_BUDGET.items():
+        pool = sorted((t for t in targets if t["column"] == col),
+                      key=lambda t: t["id"])
+        if not pool:
+            continue
+        take = min(len(pool), max(1, round(budget * scale)))
+        start = (month_index * take) % len(pool)
+        window.extend(pool[(start + i) % len(pool)] for i in range(take))
 
+    # Per-host pacing, measured rather than guessed. A full-speed sweep of all
+    # 5,585 links returned HTTP 429 for 1,826 Chess.com and 1,782 Chessgames
+    # requests; at these intervals the same hosts answer cleanly. Rate-limited
+    # requests are never counted as dead, so the cost of pacing too fast is a
+    # wasted month of coverage rather than a wrong answer.
+    HOST_DELAY = {
+        "www.chess.com": 1.3,
+        "www.chessgames.com": 1.3,
+        "lichess.org": 1.0,
+    }
     lock = threading.Lock()
     last_hit: dict[str, float] = {}
 
     def polite(target):
         host = urllib.parse.urlsplit(target["url"]).netloc
+        delay = HOST_DELAY.get(host, 0.4)
         with lock:
-            wait = last_hit.get(host, 0.0) + 0.6 - time.monotonic()
+            wait = last_hit.get(host, 0.0) + delay - time.monotonic()
             if wait > 0:
                 time.sleep(wait)
             last_hit[host] = time.monotonic()
@@ -364,7 +406,8 @@ def check_links(roster: list[dict], today: dt.date,
     return {
         "checked": len(window),
         "total_links": total,
-        "window_start": start,
+        "checked_by_platform": {c: sum(1 for w in window if w["column"] == c)
+                                for c in CHECKABLE},
         "dead": dead,
         "rechecked": len(suspects),
         "inconclusive": unknown,
